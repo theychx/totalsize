@@ -1,0 +1,26 @@
+[build-system]
+requires = ["flit_core >=2,<3"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.metadata]
+module = "totalsize"
+author = "theychx"
+author-email = "theychx@fastmail.com"
+home-page = "https://github.com/theychx/totalsize"
+requires = ["youtube-dl >=2019.11.22"]
+requires-python = ">=3.6"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Topic :: Multimedia",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Video",
+]
+
+
+[tool.flit.scripts]
+totalsize = "totalsize.total:cli"
