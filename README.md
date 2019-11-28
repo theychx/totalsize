@@ -3,7 +3,7 @@ Script that uses youtube-dl to calculate total size of all videos in a playlist 
 # Installation
 
 ```
-pip install totalsize
+pip3 install totalsize
 ```
 Totalsize requires python 3.6 or above.
 # Usage
