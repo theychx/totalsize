@@ -22,6 +22,7 @@ TOTAL_SIZE_TXT = "Total size of all media with reported size"
 TOTAL_MEDIA_TXT = "Total number of media files"
 TOTAL_INACC_TXT = "Total number of media files with inaccurate reported size"
 TOTAL_NO_SIZE_TXT = "Total number of media files with no reported size"
+ABORT_TXT = "\nAborted by user. Results will be incomplete!"
 
 
 class ResourceNotFoundError(Exception):
@@ -91,8 +92,8 @@ class Playlist:
 
     def get_info(self):
         for media in self._medias:
-            self.number_of_media += 1
             inaccurate, size = self._get_size(media)
+            self.number_of_media += 1
             if inaccurate:
                 self.number_of_media_inacc += 1
             if size is None:
@@ -116,7 +117,7 @@ def print_report_line(template, title, size=None, inaccurate=False, msg=None, er
     report_line = {
         "title": title[: TITLE_FIELD_SIZE - 3] + "..." if len(title) > TITLE_FIELD_SIZE else title,
         "field_size": TITLE_FIELD_SIZE,
-        "msg": msg or ("no size" if size is None else None),
+        "msg": msg or "",
         "inaccurate": "~" if inaccurate else " ",
         "size": readable_size(size) if size else None,
     }
@@ -127,15 +128,19 @@ def get_totalsize(url, format_filter, report_mode=False):
     playlist = Playlist(url, format_filter)
     info = playlist.get_info()
 
-    for title, inaccurate, size in info:
+    try:
+        for title, inaccurate, size in info:
+            if not report_mode:
+                continue
+            if size is None:
+                print_report_line(REPORT_TEMPLATE_1, title, msg="no size", err=True)
+            else:
+                print_report_line(REPORT_TEMPLATE_2, title, size=size, inaccurate=inaccurate)
+    except KeyboardInterrupt:
+        print_report_line(REPORT_TEMPLATE_1, ABORT_TXT, err=True)
+    finally:
         if not report_mode:
-            continue
-        if size is None:
-            print_report_line(REPORT_TEMPLATE_1, title, size=size, err=True)
-        else:
-            print_report_line(REPORT_TEMPLATE_2, title, size=size, inaccurate=inaccurate)
-    if not report_mode:
-        return playlist
+            return playlist
 
     if playlist.total_sum:
         print(PAD)
