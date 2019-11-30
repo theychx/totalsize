@@ -137,8 +137,11 @@ def get_totalsize(url, format_filter, report_mode=False):
             else:
                 print_report_line(REPORT_TEMPLATE_2, title, size=size, inaccurate=inaccurate)
     except KeyboardInterrupt:
-        print_report_line(REPORT_TEMPLATE_1, ABORT_TXT, err=True)
-    finally:
+        if report_mode:
+            print_report_line(REPORT_TEMPLATE_1, ABORT_TXT, err=True)
+        else:
+            raise
+    else:
         if not report_mode:
             return playlist
 
