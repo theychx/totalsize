@@ -65,7 +65,10 @@ class Playlist:
                     media_sum += int(fmatch.group(1))
                 else:
                     fragm_url = media["fragment_base_url"] + fragments[2]["path"]
-                    self._ydl.extract_info(fragm_url)
+                    try:
+                        self._ydl.extract_info(fragm_url)
+                    except youtube_dl.utils.DownloadError:
+                        return (False, None)
                     media_sum += TEMPPATH.stat().st_size * (len(fragments) - 1)
                     TEMPPATH.unlink()
                     inaccurate = True
@@ -137,8 +140,11 @@ def get_totalsize(url, format_filter, report_mode=False):
             else:
                 print_report_line(REPORT_TEMPLATE_2, title, size=size, inaccurate=inaccurate)
     except KeyboardInterrupt:
-        print_report_line(REPORT_TEMPLATE_1, ABORT_TXT, err=True)
-    finally:
+        if report_mode:
+            print_report_line(REPORT_TEMPLATE_1, ABORT_TXT, err=True)
+        else:
+            raise
+    else:
         if not report_mode:
             return playlist
 
