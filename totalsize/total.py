@@ -64,7 +64,10 @@ class Playlist:
                 if fmatch:
                     media_sum += int(fmatch.group(1))
                 else:
-                    fragm_url = media["fragment_base_url"] + fragments[2]["path"]
+                    lfrags = len(fragments)
+                    if lfrags < 2:
+                        return (False, None)
+                    fragm_url = media["fragment_base_url"] + fragments[2 if lfrags > 2 else 1]["path"]
                     try:
                         self._ydl.extract_info(fragm_url)
                     except youtube_dl.utils.DownloadError:
