@@ -58,8 +58,23 @@ class Playlist:
         inaccurate = False
 
         for media in info:
+            filesize = media.get("filesize")
+            filesize_approx = media.get("filesize_approx")
             fragments = media.get("fragments")
-            if fragments:
+
+            if filesize:
+                media_sum += filesize
+            elif filesize_approx:
+                media_sum += filesize_approx
+                inaccurate = True
+            elif fragments:
+                try:
+                    media_sum += sum(f["filesize"] for f in fragments)
+                except KeyError:
+                    pass
+                else:
+                    continue
+
                 fmatch = re.match(FRAGMENTS_REGEX, fragments[-1]["path"])
                 if fmatch:
                     media_sum += int(fmatch.group(1))
@@ -72,14 +87,11 @@ class Playlist:
                         self._ydl.extract_info(fragm_url)
                     except youtube_dl.utils.DownloadError:
                         return (False, None)
-                    media_sum += TEMPPATH.stat().st_size * (len(fragments) - 1)
+                    media_sum += TEMPPATH.stat().st_size * (lfrags - 1)
                     TEMPPATH.unlink()
                     inaccurate = True
             else:
-                filesize = media.get("filesize")
-                if not filesize:
-                    return (False, None)
-                media_sum += filesize
+                return (False, None)
         return (inaccurate, media_sum)
 
     def _get_size(self, info):
