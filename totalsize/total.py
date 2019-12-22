@@ -1,9 +1,9 @@
 import argparse
+import datetime
 import math
 import re
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 import youtube_dl
@@ -16,13 +16,13 @@ YTDL_OPTS = {"quiet": True, "no_warnings": True, "outtmpl": str(TEMPPATH)}
 MULT_NAMES_BTS = ("B", "KB", "MB", "GB", "TB", "PB")
 MULT_NAMES_DEC = ("", "K", "M", "B")
 
-TXT_FIELD_SIZE = 60
+TXT_FIELD_SIZE = 53
 MSG_FIELD_SIZE = 12
-MORE_FIELD_SIZE = 48
-REPORT_STRING = "{txt:<60}{msg:>12}"
+MORE_FIELD_SIZE = 55
+REPORT_STRING = "{txt:<53}{msg:>12}"
 SIZE_STRING = "{0:>7.1f} {1}"
 SIZE_STRING_NO_MULT = "{0:>7}"
-MORE_STRING = "{duration:>12}{views:>9}{likes:>9}{dislikes:>9}{likes_percentage:>9}"
+MORE_STRING = "{duration:>19}{views:>9}{likes:>9}{dislikes:>9}{likes_percentage:>9}"
 LEGACY = {"txt": "", "msg": "Size"}
 MORE_LEGACY = {
     "duration": "Duration",
@@ -80,7 +80,7 @@ class Entry:
 
     @property
     def readable_duration(self):
-        return time.strftime("%H:%M:%S", time.gmtime(self.duration)) if self.duration is not None else None
+        return str(datetime.timedelta(seconds=round(self.duration))) if self.duration is not None else None
 
     @property
     def readable_views(self):
