@@ -141,11 +141,11 @@ class Playlist:
         info = {
             "title": None,
             "inaccurate": any(e.inaccurate for e in self._entries),
-            "size": sum(e.size for e in self._entries if e.size),
-            "duration": sum(e.duration for e in self._entries if e.duration),
-            "views": sum(e.views for e in self._entries if e.views),
-            "likes": sum(e.likes for e in self._entries if e.likes),
-            "dislikes": sum(e.dislikes for e in self._entries if e.dislikes),
+            "size": sum(e.size for e in self._entries if e.size) or None,
+            "duration": sum(e.duration for e in self._entries if e.duration) or None,
+            "views": sum(e.views for e in self._entries if e.views) or None,
+            "likes": sum(e.likes for e in self._entries if e.likes) or None,
+            "dislikes": sum(e.dislikes for e in self._entries if e.dislikes) or None,
         }
         return Entry(**info)
 
