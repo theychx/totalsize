@@ -96,7 +96,8 @@ class Entry:
 
     @property
     def readable_likes_percentage(self):
-        return "{:.1f}%".format(self.likes_percentage) if self.likes_percentage is not None else None
+        likes_percentage = self.likes_percentage
+        return "{:.1f}%".format(likes_percentage) if likes_percentage is not None else None
 
     def _readable_amount(self, amount, byte=False):
         if amount is None:
