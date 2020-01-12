@@ -4,15 +4,25 @@ import math
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import youtube_dl
+from youtube_dl.utils import DownloadError, ExtractorError
+from youtube_dl.compat import compat_urllib_error
 
 DEFAULT_FORMAT = "bestvideo+bestaudio/best"
 FORMAT_DOC_URL = "https://github.com/ytdl-org/youtube-dl#format-selection"
 FRAGMENTS_REGEX = re.compile(r"range/[\d]+-([\d]+)$")
 TEMPPATH = Path(tempfile.gettempdir(), "totalsize", "fragment")
-YTDL_OPTS = {"quiet": True, "no_warnings": True, "outtmpl": str(TEMPPATH)}
+TIMEOUT = 30
+YTDL_OPTS = {
+    "quiet": True,
+    "no_warnings": True,
+    "outtmpl": str(TEMPPATH),
+    "socket_timeout": TIMEOUT,
+}
+DEFAULT_RETRIES = 10
 MULT_NAMES_BTS = ("B", "KB", "MB", "GB", "TB", "PB")
 MULT_NAMES_DEC = ("", "K", "M", "B")
 
@@ -46,6 +56,10 @@ class ResourceNotFoundError(Exception):
 
 
 class FormatSelectionError(Exception):
+    pass
+
+
+class MaxRetriesError(Exception):
     pass
 
 
@@ -96,7 +110,8 @@ class Entry:
 
     @property
     def readable_likes_percentage(self):
-        return "{:.1f}%".format(self.likes_percentage) if self.likes_percentage is not None else None
+        likes_percentage = self.likes_percentage
+        return "{:.1f}%".format(likes_percentage) if likes_percentage is not None else None
 
     def _readable_amount(self, amount, byte=False):
         if amount is None:
@@ -115,7 +130,8 @@ class Entry:
 
 
 class Playlist:
-    def __init__(self, url, format_sel):
+    def __init__(self, url, format_sel, retries=0):
+        self.retries = retries
         self._ydl = youtube_dl.YoutubeDL(YTDL_OPTS)
         TEMPPATH.parent.mkdir(exist_ok=True)
 
@@ -167,8 +183,19 @@ class Playlist:
 
     def gen_info(self):
         for media in self._medias:
-            media_info = self._get_media_info(media) or {}
-            inaccurate, size = self._get_size(media_info) if media_info else (False, None)
+            attempt_retries = 0
+            while True:
+                try:
+                    media_info = self._get_media_info(media) or {}
+                    inaccurate, size = self._get_size(media_info) if media_info else (False, None)
+                except (DownloadError, ExtractorError, compat_urllib_error.URLError):
+                    attempt_retries += 1
+                    if attempt_retries > self.retries:
+                        raise MaxRetriesError
+                    time.sleep(TIMEOUT)
+                else:
+                    break
+
             info = {
                 "title": media.get("title"),
                 "inaccurate": inaccurate,
@@ -182,11 +209,8 @@ class Playlist:
             self._entries.append(entry)
             yield entry
 
-    def _get_media_info(self, media):
-        try:
-            return self._ydl.process_ie_result(media, download=False)
-        except (youtube_dl.utils.DownloadError, youtube_dl.utils.ExtractorError):
-            return None
+    def _get_media_info(self, media, retries=0):
+        return self._ydl.process_ie_result(media, download=False)
 
     def _get_size(self, media_info):
         try:
@@ -228,10 +252,7 @@ class Playlist:
                     if lfrags < 2:
                         return (False, None)
                     fragm_url = media["fragment_base_url"] + fragments[2 if lfrags > 2 else 1]["path"]
-                    try:
-                        self._ydl.extract_info(fragm_url)
-                    except youtube_dl.utils.DownloadError:
-                        return (False, None)
+                    self._ydl.extract_info(fragm_url)
                     media_sum += TEMPPATH.stat().st_size * (lfrags - 1)
                     TEMPPATH.unlink()
                     inaccurate = True
@@ -272,8 +293,8 @@ def print_legacy_line(more_info=False):
     print(fstr.format(**legacy_line))
 
 
-def print_report(url, format_filter, more_info=False):
-    playlist = Playlist(url, format_filter)
+def print_report(url, format_filter, more_info=False, retries=0):
+    playlist = Playlist(url, format_filter, retries=retries)
     pad = MPAD if more_info else PAD
 
     print_legacy_line(more_info=more_info)
@@ -313,20 +334,30 @@ def cli():
         "-f",
         "--format-filter",
         default=DEFAULT_FORMAT,
-        help="Custom format filter. See {} for details. The default is {}".format(FORMAT_DOC_URL, DEFAULT_FORMAT),
+        help='Custom format filter. See {} for details. The default is "{}".'.format(FORMAT_DOC_URL, DEFAULT_FORMAT),
     )
     parser.add_argument(
         "-m", "--more-info", action="store_true", help="Display more info on each media file (if available)."
+    )
+    parser.add_argument(
+        "-r",
+        "--retries",
+        metavar="NUM",
+        type=int,
+        default=DEFAULT_RETRIES,
+        help="Max number of connection retries. The default is {}.".format(DEFAULT_RETRIES),
     )
     args = parser.parse_args()
     err_msg = None
 
     try:
-        print_report(args.url, args.format_filter, more_info=args.more_info)
+        print_report(args.url, args.format_filter, more_info=args.more_info, retries=args.retries)
     except ResourceNotFoundError:
         err_msg = "Resource not found."
     except FormatSelectionError:
         err_msg = "Invalid format filter."
+    except MaxRetriesError:
+        err_msg = "Max number of retries ({}) reached.".format(args.retries) if args.retries else "Network error."
     finally:
         if err_msg:
             parser.error(err_msg)
