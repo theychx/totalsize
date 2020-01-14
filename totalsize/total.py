@@ -1,4 +1,5 @@
 import argparse
+import csv
 import datetime
 import math
 import re
@@ -8,8 +9,8 @@ import time
 from pathlib import Path
 
 import youtube_dl
-from youtube_dl.utils import DownloadError, ExtractorError
 from youtube_dl.compat import compat_urllib_error
+from youtube_dl.utils import DownloadError, ExtractorError
 
 DEFAULT_FORMAT = "bestvideo+bestaudio/best"
 FORMAT_DOC_URL = "https://github.com/ytdl-org/youtube-dl#format-selection"
@@ -60,6 +61,10 @@ class FormatSelectionError(Exception):
 
 
 class MaxRetriesError(Exception):
+    pass
+
+
+class CsvFileError(Exception):
     pass
 
 
@@ -129,6 +134,9 @@ class Entry:
         return fstr.format(size, mname)
 
 
+MOCK_ENTRY = Entry("mock", False, 0, 0, 0, 0, 0)
+
+
 class Playlist:
     def __init__(self, url, format_sel, retries=0):
         self.retries = retries
@@ -148,34 +156,34 @@ class Playlist:
             raise ResourceNotFoundError
 
         self._medias = preinfo.get("entries") or [preinfo]
-        self._entries = []
+        self.entries = []
 
     @property
     def totals(self):
-        if not self._entries:
+        if not self.entries:
             return None
         info = {
             "title": None,
-            "inaccurate": any(e.inaccurate for e in self._entries),
-            "size": sum(e.size for e in self._entries if e.size) or None,
-            "duration": sum(e.duration for e in self._entries if e.duration) or None,
-            "views": sum(e.views for e in self._entries if e.views) or None,
-            "likes": sum(e.likes for e in self._entries if e.likes) or None,
-            "dislikes": sum(e.dislikes for e in self._entries if e.dislikes) or None,
+            "inaccurate": any(e.inaccurate for e in self.entries),
+            "size": sum(e.size for e in self.entries if e.size) or None,
+            "duration": sum(e.duration for e in self.entries if e.duration) or None,
+            "views": sum(e.views for e in self.entries if e.views) or None,
+            "likes": sum(e.likes for e in self.entries if e.likes) or None,
+            "dislikes": sum(e.dislikes for e in self.entries if e.dislikes) or None,
         }
         return Entry(**info)
 
     @property
     def number_of_media(self):
-        return len(self._entries)
+        return len(self.entries)
 
     @property
     def number_of_media_inacc(self):
-        return sum(1 for e in self._entries if e.inaccurate)
+        return sum(1 for e in self.entries if e.inaccurate)
 
     @property
     def number_of_media_nosize(self):
-        return sum(1 for e in self._entries if e.size is None)
+        return sum(1 for e in self.entries if e.size is None)
 
     def accum_info(self):
         for _ in self.gen_info():
@@ -206,10 +214,10 @@ class Playlist:
                 "dislikes": media_info.get("dislike_count"),
             }
             entry = Entry(**info)
-            self._entries.append(entry)
+            self.entries.append(entry)
             yield entry
 
-    def _get_media_info(self, media, retries=0):
+    def _get_media_info(self, media):
         return self._ydl.process_ie_result(media, download=False)
 
     def _get_size(self, media_info):
@@ -261,6 +269,27 @@ class Playlist:
         return (inaccurate, media_sum)
 
 
+def gen_csv_rows(entries, more_info=False):
+    for entry in entries:
+        row = [entry.title, entry.size]
+        if more_info:
+            row += [entry.duration, entry.views, entry.likes, entry.dislikes, entry.likes_percentage]
+        yield row
+
+
+def write_to_csv(csv_path, rows):
+    try:
+        with csv_path.open("x", newline="") as csvfile:
+            csv_writer = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL)
+            csv_writer.writerows(rows)
+    except PermissionError:
+        raise CsvFileError("Insufficient file permissions.")
+    except FileExistsError:
+        raise CsvFileError("File already exists.")
+    except FileNotFoundError:
+        raise CsvFileError("Invalid path.")
+
+
 def print_report_line(entry=None, txt="", msg="", more_info=False, err=False):
     fstr = REPORT_STRING
     if entry:
@@ -293,8 +322,7 @@ def print_legacy_line(more_info=False):
     print(fstr.format(**legacy_line))
 
 
-def print_report(url, format_filter, more_info=False, retries=0):
-    playlist = Playlist(url, format_filter, retries=retries)
+def print_report(playlist, more_info=False):
     pad = MPAD if more_info else PAD
 
     print_legacy_line(more_info=more_info)
@@ -333,6 +361,7 @@ def cli():
     parser.add_argument(
         "-f",
         "--format-filter",
+        type=str,
         default=DEFAULT_FORMAT,
         help='Custom format filter. See {} for details. The default is "{}".'.format(FORMAT_DOC_URL, DEFAULT_FORMAT),
     )
@@ -347,20 +376,33 @@ def cli():
         default=DEFAULT_RETRIES,
         help="Max number of connection retries. The default is {}.".format(DEFAULT_RETRIES),
     )
+    parser.add_argument("-c", "--csv-file", metavar="FILE", type=str, help="Write data to csv file.")
     args = parser.parse_args()
     err_msg = None
 
     try:
-        print_report(args.url, args.format_filter, more_info=args.more_info, retries=args.retries)
+        more_info = args.more_info
+        retries = args.retries
+        csv_path = None
+        if args.csv_file:
+            csv_path = Path(args.csv_file)
+            write_to_csv(csv_path, gen_csv_rows([MOCK_ENTRY]))
+            csv_path.unlink()
+        playlist = Playlist(args.url, args.format_filter, retries=retries)
+        print_report(playlist, more_info=more_info)
+        if csv_path:
+            write_to_csv(csv_path, gen_csv_rows(playlist.entries, more_info=more_info))
     except ResourceNotFoundError:
         err_msg = "Resource not found."
     except FormatSelectionError:
         err_msg = "Invalid format filter."
     except MaxRetriesError:
-        err_msg = "Max number of retries ({}) reached.".format(args.retries) if args.retries else "Network error."
+        err_msg = "Max number of retries ({}) reached.".format(retries) if retries else "Network error."
+    except CsvFileError as err:
+        err_msg = str(err)
     finally:
         if err_msg:
-            parser.error(err_msg)
+            parser.exit(status=1, message="Error: {}\n".format(err_msg))
 
 
 if __name__ == "__main__":
