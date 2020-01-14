@@ -2,4 +2,4 @@
 
 __author__ = "theychx"
 __email__ = "theychx@fastmail.com"
-__version__ = "0.2.2"
+__version__ = "0.3.0"
