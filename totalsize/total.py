@@ -164,14 +164,18 @@ class Playlist:
     def totals(self):
         if not self.entries:
             return None
+        likes = sum(e.likes for e in self.entries if e.likes)
+        dislikes = sum(e.dislikes for e in self.entries if e.dislikes)
+        likes = likes if likes or dislikes else None
+        dislikes = dislikes if likes or dislikes else None
         info = {
             "title": None,
             "inaccurate": any(e.inaccurate for e in self.entries),
             "size": sum(e.size for e in self.entries if e.size) or None,
             "duration": sum(e.duration for e in self.entries if e.duration) or None,
             "views": sum(e.views for e in self.entries if e.views) or None,
-            "likes": sum(e.likes for e in self.entries if e.likes) or None,
-            "dislikes": sum(e.dislikes for e in self.entries if e.dislikes) or None,
+            "likes": likes,
+            "dislikes": dislikes,
         }
         return Entry(**info)
 
