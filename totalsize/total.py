@@ -26,11 +26,12 @@ YTDL_OPTS = {
 DEFAULT_RETRIES = 10
 MULT_NAMES_BTS = ("B", "KB", "MB", "GB", "TB", "PB")
 MULT_NAMES_DEC = ("", "K", "M", "B")
+RAW_OPTS = ("media", "size", "duration", "views", "likes", "dislikes", "percentage")
 
-TXT_FIELD_SIZE = 53
+TXT_FIELD_SIZE = 58
 MSG_FIELD_SIZE = 12
 MORE_FIELD_SIZE = 55
-REPORT_STRING = "{txt:<53}{msg:>12}"
+REPORT_STRING = "{txt:<58}{msg:>12}"
 SIZE_STRING = "{0:>7.1f} {1}"
 SIZE_STRING_NO_MULT = "{0:>7}"
 MORE_STRING = "{duration:>19}{views:>9}{likes:>9}{dislikes:>9}{likes_percentage:>9}"
@@ -50,6 +51,7 @@ TOTAL_MEDIA_TXT = "Total number of media files"
 TOTAL_INACC_TXT = "Total number of media files with inaccurate reported size"
 TOTAL_NO_SIZE_TXT = "Total number of media files with no reported size"
 ABORT_TXT = "\nAborted by user. Results will be incomplete!"
+SUPPRESS_TXT = "Suppress normal output, and print raw {}."
 
 
 class ResourceNotFoundError(Exception):
@@ -355,6 +357,22 @@ def print_report(playlist, more_info=False):
         print_report_line(txt=TOTAL_NO_SIZE_TXT, msg=number_of_media_nosize, err=True)
 
 
+def print_raw_data(playlist, raw_opts):
+    playlist.accum_info()
+    totals = playlist.totals
+    fields = {
+        "media": playlist.number_of_media,
+        "size": totals.size,
+        "duration": totals.duration,
+        "views": totals.views,
+        "likes": totals.likes,
+        "dislikes": totals.dislikes,
+        "percentage": totals.likes_percentage,
+    }
+    for sel_opt in raw_opts:
+        print(fields[sel_opt])
+
+
 def cli():
     parser = argparse.ArgumentParser(description="Calculate total size of media playlist contents.")
     parser.add_argument("url", metavar="URL", type=str, help="playlist/media url")
@@ -377,21 +395,38 @@ def cli():
         help="Max number of connection retries. The default is {}.".format(DEFAULT_RETRIES),
     )
     parser.add_argument("-c", "--csv-file", metavar="FILE", type=str, help="Write data to csv file.")
+    parser.add_argument("--media", action="store_true", help=SUPPRESS_TXT.format("media count"))
+    parser.add_argument("--size", action="store_true", help=SUPPRESS_TXT.format("total size (bytes)"))
+    parser.add_argument("--duration", action="store_true", help=SUPPRESS_TXT.format("total duration (seconds)"))
+    parser.add_argument("--views", action="store_true", help=SUPPRESS_TXT.format("views count"))
+    parser.add_argument("--likes", action="store_true", help=SUPPRESS_TXT.format("likes count"))
+    parser.add_argument("--dislikes", action="store_true", help=SUPPRESS_TXT.format("dislikes count"))
+    parser.add_argument("--percentage", action="store_true", help=SUPPRESS_TXT.format("likes/dislikes percentage"))
+
     args = parser.parse_args()
     err_msg = None
 
     try:
-        more_info = args.more_info
-        retries = args.retries
+        more_info, retries, csv_file = args.more_info, args.retries, args.csv_file
         csv_path = None
-        if args.csv_file:
-            csv_path = Path(args.csv_file)
+        sel_raw_opts = [key for key, value in vars(args).items() if key in RAW_OPTS and value]
+        sorted(sel_raw_opts, key=lambda x: RAW_OPTS.index(x))
+
+        if csv_file:
+            csv_path = Path(csv_file)
             write_to_csv(csv_path, gen_csv_rows([MOCK_ENTRY]))
             csv_path.unlink()
+
         playlist = Playlist(args.url, args.format_filter, retries=retries)
-        print_report(playlist, more_info=more_info)
+        if sel_raw_opts:
+            print_raw_data(playlist, sel_raw_opts)
+        else:
+            print_report(playlist, more_info=more_info)
+
         if csv_path:
             write_to_csv(csv_path, gen_csv_rows(playlist.entries, more_info=more_info))
+    except KeyboardInterrupt:
+        err_msg = "Aborted by user!"
     except ResourceNotFoundError:
         err_msg = "Resource not found."
     except FormatSelectionError:
