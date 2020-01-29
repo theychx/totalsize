@@ -3,13 +3,13 @@ import csv
 import datetime
 import math
 import re
+import socket
 import sys
 import tempfile
 import time
 from pathlib import Path
 
 import youtube_dl
-from youtube_dl.compat import compat_urllib_error
 from youtube_dl.utils import DownloadError, ExtractorError
 
 DEFAULT_FORMAT = "bestvideo+bestaudio/best"
@@ -27,6 +27,7 @@ DEFAULT_RETRIES = 10
 MULT_NAMES_BTS = ("B", "KB", "MB", "GB", "TB", "PB")
 MULT_NAMES_DEC = ("", "K", "M", "B")
 RAW_OPTS = ("media", "size", "duration", "views", "likes", "dislikes", "percentage")
+DL_ERRS = ("unable to download webpage", "this video is unavailable", "fragment")
 
 TXT_FIELD_SIZE = 58
 MSG_FIELD_SIZE = 12
@@ -50,7 +51,8 @@ TOTALS = "Totals"
 TOTAL_MEDIA_TXT = "Total number of media files"
 TOTAL_INACC_TXT = "Total number of media files with inaccurate reported size"
 TOTAL_NO_SIZE_TXT = "Total number of media files with no reported size"
-ABORT_TXT = "\nAborted by user. Results will be incomplete!"
+ABORT_TXT = "\nAborted by user."
+ABORT_INCOMPLETE_TXT = ABORT_TXT + " Results will be incomplete!"
 SUPPRESS_TXT = "Suppress normal output, and print raw {}."
 
 
@@ -59,10 +61,6 @@ class ResourceNotFoundError(Exception):
 
 
 class FormatSelectionError(Exception):
-    pass
-
-
-class MaxRetriesError(Exception):
     pass
 
 
@@ -141,7 +139,7 @@ MOCK_ENTRY = Entry("mock", False, 0, 0, 0, 0, 0)
 
 class Playlist:
     def __init__(self, url, format_sel, retries=0):
-        self.retries = retries
+        self._retries = retries
         self._ydl = youtube_dl.YoutubeDL(YTDL_OPTS)
         TEMPPATH.parent.mkdir(exist_ok=True)
 
@@ -154,7 +152,7 @@ class Playlist:
             preinfo = self._ydl.extract_info(url, process=False)
             if preinfo.get("ie_key"):
                 preinfo = self._ydl.extract_info(preinfo["url"], process=False)
-        except youtube_dl.utils.DownloadError:
+        except DownloadError:
             raise ResourceNotFoundError
 
         self._medias = preinfo.get("entries") or [preinfo]
@@ -198,15 +196,21 @@ class Playlist:
     def gen_info(self):
         for media in self._medias:
             attempt_retries = 0
-            while True:
-                try:
-                    media_info = self._get_media_info(media) or {}
-                    inaccurate, size = self._get_size(media_info) if media_info else (False, None)
-                except (DownloadError, ExtractorError, compat_urllib_error.URLError):
-                    attempt_retries += 1
-                    if attempt_retries > self.retries:
-                        raise MaxRetriesError
+            media_info = {}
+            inaccurate, size = (False, None)
+
+            while attempt_retries <= self._retries:
+                if attempt_retries > 0:
                     time.sleep(TIMEOUT)
+                try:
+                    media_info = self._get_media_info(media)
+                    inaccurate, size = self._get_size(media_info)
+                except (DownloadError, ExtractorError) as err:
+                    serr = str(err).lower()
+                    if any(e in serr for e in DL_ERRS):
+                        attempt_retries += 1
+                    else:
+                        break
                 else:
                     break
 
@@ -341,7 +345,7 @@ def print_report(playlist, more_info=False):
             else:
                 print_report_line(entry=entry, more_info=more_info)
     except KeyboardInterrupt:
-        print_report_line(txt=ABORT_TXT, err=True)
+        print_report_line(txt=ABORT_INCOMPLETE_TXT, err=True)
 
     print(pad)
     print_legacy_line(more_info=more_info)
@@ -430,13 +434,11 @@ def cli():
         if csv_path:
             write_to_csv(csv_path, gen_csv_rows(playlist.entries, more_info=more_info))
     except KeyboardInterrupt:
-        err_msg = "Aborted by user!"
+        err_msg = ABORT_TXT
     except ResourceNotFoundError:
         err_msg = "Resource not found."
     except FormatSelectionError:
         err_msg = "Invalid format filter."
-    except MaxRetriesError:
-        err_msg = "Max number of retries ({}) reached.".format(retries) if retries else "Network error."
     except CsvFileError as err:
         err_msg = str(err)
     finally:
