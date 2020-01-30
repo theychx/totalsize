@@ -135,7 +135,7 @@ class Entry:
         return fstr.format(size, mname)
 
 
-MOCK_ENTRY = Entry("mock", False, 0, 0, 0, 0, 0)
+MOCK_ENTRY = Entry("mock", False, None, None, None, None, None)
 
 
 class Playlist:
