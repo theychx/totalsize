@@ -202,6 +202,8 @@ class Playlist:
             inaccurate, size = (False, None)
 
             while attempt_retries <= self._retries:
+                if attempt_retries > 0:
+                    time.sleep(TIMEOUT)
                 try:
                     media_info = self._get_media_info(media)
                     inaccurate, size = self._get_size(media_info)
@@ -209,7 +211,6 @@ class Playlist:
                     serr = str(err).lower()
                     if any(e in serr for e in DL_ERRS):
                         attempt_retries += 1
-                        time.sleep(TIMEOUT)
                         continue
                     elif UNSUPPORTED_URL_ERR in serr:
                         unsupported = True
