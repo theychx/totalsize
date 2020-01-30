@@ -3,7 +3,6 @@ import csv
 import datetime
 import math
 import re
-import socket
 import sys
 import tempfile
 import time
