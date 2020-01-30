@@ -28,6 +28,7 @@ MULT_NAMES_BTS = ("B", "KB", "MB", "GB", "TB", "PB")
 MULT_NAMES_DEC = ("", "K", "M", "B")
 RAW_OPTS = ("media", "size", "duration", "views", "likes", "dislikes", "percentage")
 DL_ERRS = ("unable to download webpage", "this video is unavailable", "fragment")
+NOT_AVAILABLE_VAL = -1
 
 TXT_FIELD_SIZE = 58
 MSG_FIELD_SIZE = 12
@@ -370,12 +371,12 @@ def print_raw_data(playlist, raw_opts):
     totals = playlist.totals
     fields = {
         "media": playlist.number_of_media,
-        "size": totals.size,
-        "duration": totals.duration,
-        "views": totals.views,
-        "likes": totals.likes,
-        "dislikes": totals.dislikes,
-        "percentage": totals.likes_percentage,
+        "size": totals.size or NOT_AVAILABLE_VAL,
+        "duration": totals.duration or NOT_AVAILABLE_VAL,
+        "views": totals.views or NOT_AVAILABLE_VAL,
+        "likes": totals.likes or NOT_AVAILABLE_VAL,
+        "dislikes": totals.dislikes or NOT_AVAILABLE_VAL,
+        "percentage": totals.likes_percentage or NOT_AVAILABLE_VAL,
     }
     for sel_opt in raw_opts:
         print(fields[sel_opt])
