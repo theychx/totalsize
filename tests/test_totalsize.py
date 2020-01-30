@@ -31,6 +31,20 @@ class TestTotal(unittest.TestCase):
         self.assertEqual(playlist.number_of_media_inacc, 0)
         self.assertEqual(playlist.number_of_media_nosize, 0)
 
+    def test_get_totalsize_bc_album(self):
+        playlist = Playlist("https://spacedimensioncontroller.bandcamp.com/album/love-beyond-the-intersect", "best")
+        playlist.accum_info()
+        self.assertIsNone(playlist.totals.size)
+        self.assertEqual(playlist.number_of_media, 11)
+        self.assertEqual(playlist.number_of_media_inacc, 0)
+        self.assertEqual(playlist.number_of_media_nosize, 11)
+
+    def test_get_totalsize_unsupported_url(self):
+        playlist = Playlist("https://google.com", "best")
+        playlist.accum_info()
+        self.assertIsNone(playlist.totals.size)
+        self.assertEqual(playlist.number_of_media, 0)
+
 
 if __name__ == "__main__":
     sys.exit(unittest.main())

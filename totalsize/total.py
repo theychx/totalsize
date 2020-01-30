@@ -3,7 +3,6 @@ import csv
 import datetime
 import math
 import re
-import socket
 import sys
 import tempfile
 import time
@@ -28,6 +27,8 @@ MULT_NAMES_BTS = ("B", "KB", "MB", "GB", "TB", "PB")
 MULT_NAMES_DEC = ("", "K", "M", "B")
 RAW_OPTS = ("media", "size", "duration", "views", "likes", "dislikes", "percentage")
 DL_ERRS = ("unable to download webpage", "this video is unavailable", "fragment")
+UNSUPPORTED_URL_ERR = "unsupported url"
+NOT_AVAILABLE_VAL = -1
 
 TXT_FIELD_SIZE = 58
 MSG_FIELD_SIZE = 12
@@ -134,7 +135,7 @@ class Entry:
         return fstr.format(size, mname)
 
 
-MOCK_ENTRY = Entry("mock", False, 0, 0, 0, 0, 0)
+MOCK_ENTRY = Entry("mock", False, None, None, None, None, None)
 
 
 class Playlist:
@@ -161,7 +162,7 @@ class Playlist:
     @property
     def totals(self):
         if not self.entries:
-            return None
+            return MOCK_ENTRY
         likes = sum(e.likes for e in self.entries if e.likes)
         dislikes = sum(e.dislikes for e in self.entries if e.dislikes)
         likes = likes if likes or dislikes else None
@@ -196,6 +197,7 @@ class Playlist:
     def gen_info(self):
         for media in self._medias:
             attempt_retries = 0
+            unsupported = False
             media_info = {}
             inaccurate, size = (False, None)
 
@@ -209,10 +211,14 @@ class Playlist:
                     serr = str(err).lower()
                     if any(e in serr for e in DL_ERRS):
                         attempt_retries += 1
-                    else:
-                        break
+                        continue
+                    elif UNSUPPORTED_URL_ERR in serr:
+                        unsupported = True
+                    break
                 else:
                     break
+            if unsupported:
+                continue
 
             info = {
                 "title": media.get("title"),
@@ -370,12 +376,12 @@ def print_raw_data(playlist, raw_opts):
     totals = playlist.totals
     fields = {
         "media": playlist.number_of_media,
-        "size": totals.size,
-        "duration": totals.duration,
-        "views": totals.views,
-        "likes": totals.likes,
-        "dislikes": totals.dislikes,
-        "percentage": totals.likes_percentage,
+        "size": totals.size or NOT_AVAILABLE_VAL,
+        "duration": totals.duration or NOT_AVAILABLE_VAL,
+        "views": totals.views if totals.views is not None else NOT_AVAILABLE_VAL,
+        "likes": totals.likes if totals.likes is not None else NOT_AVAILABLE_VAL,
+        "dislikes": totals.dislikes if totals.dislikes is not None else NOT_AVAILABLE_VAL,
+        "percentage": totals.likes_percentage if totals.likes_percentage is not None else NOT_AVAILABLE_VAL,
     }
     for sel_opt in raw_opts:
         print(fields[sel_opt])
