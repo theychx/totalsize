@@ -27,6 +27,7 @@ MULT_NAMES_BTS = ("B", "KB", "MB", "GB", "TB", "PB")
 MULT_NAMES_DEC = ("", "K", "M", "B")
 RAW_OPTS = ("media", "size", "duration", "views", "likes", "dislikes", "percentage")
 DL_ERRS = ("unable to download webpage", "this video is unavailable", "fragment")
+UNSUPPORTED_URL_ERR = "unsupported url"
 NOT_AVAILABLE_VAL = -1
 
 TXT_FIELD_SIZE = 58
@@ -161,7 +162,7 @@ class Playlist:
     @property
     def totals(self):
         if not self.entries:
-            return None
+            return MOCK_ENTRY
         likes = sum(e.likes for e in self.entries if e.likes)
         dislikes = sum(e.dislikes for e in self.entries if e.dislikes)
         likes = likes if likes or dislikes else None
@@ -196,12 +197,11 @@ class Playlist:
     def gen_info(self):
         for media in self._medias:
             attempt_retries = 0
+            unsupported = False
             media_info = {}
             inaccurate, size = (False, None)
 
             while attempt_retries <= self._retries:
-                if attempt_retries > 0:
-                    time.sleep(TIMEOUT)
                 try:
                     media_info = self._get_media_info(media)
                     inaccurate, size = self._get_size(media_info)
@@ -209,10 +209,15 @@ class Playlist:
                     serr = str(err).lower()
                     if any(e in serr for e in DL_ERRS):
                         attempt_retries += 1
-                    else:
-                        break
+                        time.sleep(TIMEOUT)
+                        continue
+                    elif UNSUPPORTED_URL_ERR in serr:
+                        unsupported = True
+                    break
                 else:
                     break
+            if unsupported:
+                continue
 
             info = {
                 "title": media.get("title"),
@@ -372,10 +377,10 @@ def print_raw_data(playlist, raw_opts):
         "media": playlist.number_of_media,
         "size": totals.size or NOT_AVAILABLE_VAL,
         "duration": totals.duration or NOT_AVAILABLE_VAL,
-        "views": totals.views or NOT_AVAILABLE_VAL,
-        "likes": totals.likes or NOT_AVAILABLE_VAL,
-        "dislikes": totals.dislikes or NOT_AVAILABLE_VAL,
-        "percentage": totals.likes_percentage or NOT_AVAILABLE_VAL,
+        "views": totals.views if totals.views is not None else NOT_AVAILABLE_VAL,
+        "likes": totals.likes if totals.likes is not None else NOT_AVAILABLE_VAL,
+        "dislikes": totals.dislikes if totals.dislikes is not None else NOT_AVAILABLE_VAL,
+        "percentage": totals.likes_percentage if totals.likes_percentage is not None else NOT_AVAILABLE_VAL,
     }
     for sel_opt in raw_opts:
         print(fields[sel_opt])
