@@ -1,3 +1,4 @@
+import os
 import argparse
 import csv
 import datetime
@@ -6,6 +7,7 @@ import re
 import sys
 import tempfile
 import time
+import http.cookiejar
 from pathlib import Path
 
 import youtube_dl
@@ -66,6 +68,14 @@ class FormatSelectionError(Exception):
 
 
 class CsvFileError(Exception):
+    pass
+
+
+class CookieFileError(Exception):
+    pass
+
+
+class CookieFormatError(Exception):
     pass
 
 
@@ -139,9 +149,20 @@ MOCK_ENTRY = Entry("mock", False, None, None, None, None, None)
 
 
 class Playlist:
-    def __init__(self, url, format_sel, retries=0):
+    def __init__(self, url, format_sel, retries=0, cookies=None):
+        opts = YTDL_OPTS
+        if cookies:
+            if not os.path.isfile(cookies):
+                raise CookieFileError  
+            try:
+                cj = http.cookiejar.MozillaCookieJar()
+                cj.load(cookies, ignore_discard=True, ignore_expires=True)
+            except http.cookiejar.LoadError:
+                raise CookieFormatError
+            opts['cookiefile'] = cookies
+            
         self._retries = retries
-        self._ydl = youtube_dl.YoutubeDL(YTDL_OPTS)
+        self._ydl = youtube_dl.YoutubeDL(opts)
         TEMPPATH.parent.mkdir(exist_ok=True)
 
         try:
@@ -283,7 +304,7 @@ class Playlist:
             else:
                 return (False, None)
         return (inaccurate, media_sum)
-
+        
 
 def gen_csv_rows(entries, more_info=False):
     for entry in entries:
@@ -416,12 +437,13 @@ def cli():
     parser.add_argument("--likes", action="store_true", help=SUPPRESS_TXT.format("likes count"))
     parser.add_argument("--dislikes", action="store_true", help=SUPPRESS_TXT.format("dislikes count"))
     parser.add_argument("--percentage", action="store_true", help=SUPPRESS_TXT.format("likes/dislikes percentage"))
+    parser.add_argument("--cookies", metavar="FILE", default=None, type=str, help="loads cookie file.")
 
     args = parser.parse_args()
     err_msg = None
 
     try:
-        more_info, retries, csv_file = args.more_info, args.retries, args.csv_file
+        more_info, retries, csv_file, cookies = args.more_info, args.retries, args.csv_file, args.cookies
         csv_path = None
         sel_raw_opts = [key for key, value in vars(args).items() if key in RAW_OPTS and value]
         sorted(sel_raw_opts, key=lambda x: RAW_OPTS.index(x))
@@ -430,8 +452,8 @@ def cli():
             csv_path = Path(csv_file)
             write_to_csv(csv_path, gen_csv_rows([MOCK_ENTRY]))
             csv_path.unlink()
-
-        playlist = Playlist(args.url, args.format_filter, retries=retries)
+        
+        playlist = Playlist(args.url, args.format_filter, retries=retries, cookies=cookies)
         if sel_raw_opts:
             print_raw_data(playlist, sel_raw_opts)
         else:
@@ -447,6 +469,10 @@ def cli():
         err_msg = "Invalid format filter."
     except CsvFileError as err:
         err_msg = str(err)
+    except CookieFileError:
+        err_msg = "Cookie file does not exist."
+    except CookieFormatError:
+        err_msg = "Cookie file is not formatted correctly."
     finally:
         if err_msg:
             parser.exit(status=1, message="Error: {}\n".format(err_msg))
