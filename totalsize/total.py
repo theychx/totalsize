@@ -150,19 +150,19 @@ MOCK_ENTRY = Entry("mock", False, None, None, None, None, None)
 
 class Playlist:
     def __init__(self, url, format_sel, retries=0, cookies=None):
-        YTDL_OPTS_LOCAL = YTDL_OPTS
+        opts = YTDL_OPTS
         if cookies:
             if not os.path.isfile(cookies):
                 raise CookieFileError  
             try:
                 cj = http.cookiejar.MozillaCookieJar()
                 cj.load(cookies, ignore_discard=True, ignore_expires=True)
-            except:
+            except http.cookiejar.LoadError:
                 raise CookieFormatError
-            YTDL_OPTS_LOCAL['cookiefile'] = cookies
+            opts['cookiefile'] = cookies
             
         self._retries = retries
-        self._ydl = youtube_dl.YoutubeDL(YTDL_OPTS_LOCAL)
+        self._ydl = youtube_dl.YoutubeDL(opts)
         TEMPPATH.parent.mkdir(exist_ok=True)
 
         try:
