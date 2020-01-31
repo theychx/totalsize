@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import http.cookiejar
+import io
 from pathlib import Path
 
 import youtube_dl
@@ -68,6 +69,14 @@ class FormatSelectionError(Exception):
 
 
 class CsvFileError(Exception):
+    pass
+
+
+class CookieFileError(Exception):
+    pass
+
+
+class CookieFormatError(Exception):
     pass
 
 
@@ -145,14 +154,12 @@ class Playlist:
         YTDL_OPTS_LOCAL = YTDL_OPTS
         if cookies:
             if not os.path.isfile(cookies):
-                print('cookie file does not exist.')
-                sys.exit(1)     
+                raise CookieFileError  
             try:
                 cj = http.cookiejar.MozillaCookieJar()
-                cj.load(cookiefile, ignore_discard=True, ignore_expires=True)
+                cj.load(cookies, ignore_discard=True, ignore_expires=True)
             except:
-                print('invalid cookie file.')
-                sys.exit(1)
+                raise CookieFormatError
             YTDL_OPTS_LOCAL['cookiefile'] = cookies
             
         self._retries = retries
@@ -298,7 +305,7 @@ class Playlist:
             else:
                 return (False, None)
         return (inaccurate, media_sum)
-
+        
 
 def gen_csv_rows(entries, more_info=False):
     for entry in entries:
@@ -463,6 +470,10 @@ def cli():
         err_msg = "Invalid format filter."
     except CsvFileError as err:
         err_msg = str(err)
+    except CookieFileError:
+        err_msg = "Cookie file does not exist."
+    except CookieFormatError:
+        err_msg = "Cookie file is not formatted correctly."
     finally:
         if err_msg:
             parser.exit(status=1, message="Error: {}\n".format(err_msg))
