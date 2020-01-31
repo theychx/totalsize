@@ -8,7 +8,6 @@ import sys
 import tempfile
 import time
 import http.cookiejar
-import io
 from pathlib import Path
 
 import youtube_dl
