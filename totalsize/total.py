@@ -139,7 +139,10 @@ MOCK_ENTRY = Entry("mock", False, None, None, None, None, None)
 
 
 class Playlist:
-    def __init__(self, url, format_sel, retries=0):
+    def __init__(self, url, format_sel, retries=0, cookies=None):
+        if cookies:
+            YTDL_OPTS['cookiefile'] = cookies
+            
         self._retries = retries
         self._ydl = youtube_dl.YoutubeDL(YTDL_OPTS)
         TEMPPATH.parent.mkdir(exist_ok=True)
@@ -416,13 +419,13 @@ def cli():
     parser.add_argument("--likes", action="store_true", help=SUPPRESS_TXT.format("likes count"))
     parser.add_argument("--dislikes", action="store_true", help=SUPPRESS_TXT.format("dislikes count"))
     parser.add_argument("--percentage", action="store_true", help=SUPPRESS_TXT.format("likes/dislikes percentage"))
-    parser.add_argument("--cookies", metavar="FILE", type=str, help="loads cookie file.")
+    parser.add_argument("--cookies", metavar="FILE", default=None, type=str, help="loads cookie file.")
 
     args = parser.parse_args()
     err_msg = None
 
     try:
-        more_info, retries, csv_file = args.more_info, args.retries, args.csv_file
+        more_info, retries, csv_file, cookies = args.more_info, args.retries, args.csv_file, args.cookies
         csv_path = None
         sel_raw_opts = [key for key, value in vars(args).items() if key in RAW_OPTS and value]
         sorted(sel_raw_opts, key=lambda x: RAW_OPTS.index(x))
@@ -432,11 +435,7 @@ def cli():
             write_to_csv(csv_path, gen_csv_rows([MOCK_ENTRY]))
             csv_path.unlink()
         
-        if args.cookies:
-            global YTDL_OPTS
-            YTDL_OPTS['cookiefile'] = args.cookies
-
-        playlist = Playlist(args.url, args.format_filter, retries=retries)
+        playlist = Playlist(args.url, args.format_filter, retries=retries, cookies=cookies)
         if sel_raw_opts:
             print_raw_data(playlist, sel_raw_opts)
         else:
