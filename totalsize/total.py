@@ -1,3 +1,4 @@
+import os
 import argparse
 import csv
 import datetime
@@ -6,6 +7,7 @@ import re
 import sys
 import tempfile
 import time
+import http.cookiejar
 from pathlib import Path
 
 import youtube_dl
@@ -142,6 +144,15 @@ class Playlist:
     def __init__(self, url, format_sel, retries=0, cookies=None):
         YTDL_OPTS_LOCAL = YTDL_OPTS
         if cookies:
+            if not os.path.isfile(cookies):
+                print('cookie file does not exist.')
+                sys.exit(1)     
+            try:
+                cj = http.cookiejar.MozillaCookieJar()
+                cj.load(cookiefile, ignore_discard=True, ignore_expires=True)
+            except:
+                print('invalid cookie file.')
+                sys.exit(1)
             YTDL_OPTS_LOCAL['cookiefile'] = cookies
             
         self._retries = retries
