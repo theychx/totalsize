@@ -416,6 +416,7 @@ def cli():
     parser.add_argument("--likes", action="store_true", help=SUPPRESS_TXT.format("likes count"))
     parser.add_argument("--dislikes", action="store_true", help=SUPPRESS_TXT.format("dislikes count"))
     parser.add_argument("--percentage", action="store_true", help=SUPPRESS_TXT.format("likes/dislikes percentage"))
+    parser.add_argument("--cookies", metavar="FILE", type=str, help="loads cookie file.")
 
     args = parser.parse_args()
     err_msg = None
@@ -430,6 +431,10 @@ def cli():
             csv_path = Path(csv_file)
             write_to_csv(csv_path, gen_csv_rows([MOCK_ENTRY]))
             csv_path.unlink()
+        
+        if args.cookies:
+            global YTDL_OPTS
+            YTDL_OPTS['cookiefile'] = args.cookies
 
         playlist = Playlist(args.url, args.format_filter, retries=retries)
         if sel_raw_opts:
