@@ -140,11 +140,12 @@ MOCK_ENTRY = Entry("mock", False, None, None, None, None, None)
 
 class Playlist:
     def __init__(self, url, format_sel, retries=0, cookies=None):
+        YTDL_OPTS_LOCAL = YTDL_OPTS
         if cookies:
-            YTDL_OPTS['cookiefile'] = cookies
+            YTDL_OPTS_LOCAL['cookiefile'] = cookies
             
         self._retries = retries
-        self._ydl = youtube_dl.YoutubeDL(YTDL_OPTS)
+        self._ydl = youtube_dl.YoutubeDL(YTDL_OPTS_LOCAL)
         TEMPPATH.parent.mkdir(exist_ok=True)
 
         try:
