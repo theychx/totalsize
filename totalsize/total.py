@@ -438,7 +438,7 @@ def cli():
     parser.add_argument("--likes", action="store_true", help=SUPPRESS_TXT.format("likes count"))
     parser.add_argument("--dislikes", action="store_true", help=SUPPRESS_TXT.format("dislikes count"))
     parser.add_argument("--percentage", action="store_true", help=SUPPRESS_TXT.format("likes/dislikes percentage"))
-    parser.add_argument("--cookies", metavar="FILE", default=None, type=str, help="loads cookie file.")
+    parser.add_argument("--cookies", metavar="FILE", default=None, type=str, help="Loads cookie file.")
 
     args = parser.parse_args()
     err_msg = None
