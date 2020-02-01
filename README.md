@@ -11,7 +11,7 @@ Totalsize requires python 3.6+.
 ```
 totalsize [-h] [-f FORMAT_FILTER] [-m] [-r NUM] [-c FILE] [--media]
           [--size] [--duration] [--views] [--likes] [--dislikes]
-          [--percentage]
+          [--percentage] [--cookies FILE]
           URL
 ```
 See https://github.com/ytdl-org/youtube-dl#format-selection for details on formats.
