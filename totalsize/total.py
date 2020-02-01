@@ -375,13 +375,15 @@ def print_report(playlist, more_info=False):
     except KeyboardInterrupt:
         print_report_line(txt=ABORT_INCOMPLETE_TXT, err=True)
 
-    print(pad)
-    print_legacy_line(more_info=more_info)
-    print(pad)
-    print_report_line(txt=TOTALS, entry=playlist.totals, more_info=more_info)
+    number_of_media = playlist.number_of_media
+    # do not display 'total' row for one video
+    if number_of_media > 1:
+        print(pad)
+        print_legacy_line(more_info=more_info)
+        print(pad)
+        print_report_line(txt=TOTALS, entry=playlist.totals, more_info=more_info)
 
     print(pad)
-    number_of_media = playlist.number_of_media
     print_report_line(txt=TOTAL_MEDIA_TXT, msg=number_of_media, err=not number_of_media)
 
     number_of_media_inacc = playlist.number_of_media_inacc
