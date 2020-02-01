@@ -1,13 +1,12 @@
-import os
 import argparse
 import csv
 import datetime
+import http.cookiejar
 import math
 import re
 import sys
 import tempfile
 import time
-import http.cookiejar
 from pathlib import Path
 
 import youtube_dl
@@ -149,18 +148,10 @@ MOCK_ENTRY = Entry("mock", False, None, None, None, None, None)
 
 
 class Playlist:
-    def __init__(self, url, format_sel, retries=0, cookies=None):
+    def __init__(self, url, format_sel, retries=0, cookies_path=None):
         opts = YTDL_OPTS
-        if cookies:
-            if not os.path.isfile(cookies):
-                raise CookieFileError  
-            try:
-                cj = http.cookiejar.MozillaCookieJar()
-                cj.load(cookies, ignore_discard=True, ignore_expires=True)
-            except http.cookiejar.LoadError:
-                raise CookieFormatError
-            opts['cookiefile'] = cookies
-            
+        if cookies_path:
+            opts["cookiefile"] = str(cookies_path)
         self._retries = retries
         self._ydl = youtube_dl.YoutubeDL(opts)
         TEMPPATH.parent.mkdir(exist_ok=True)
@@ -233,7 +224,7 @@ class Playlist:
                     if any(e in serr for e in DL_ERRS):
                         attempt_retries += 1
                         continue
-                    elif UNSUPPORTED_URL_ERR in serr:
+                    if UNSUPPORTED_URL_ERR in serr:
                         unsupported = True
                     break
                 else:
@@ -304,7 +295,17 @@ class Playlist:
             else:
                 return (False, None)
         return (inaccurate, media_sum)
-        
+
+
+def validate_cookiefile(cookies_path):
+    if not cookies_path.is_file():
+        raise CookieFileError("Cookie file does not exist.")
+    try:
+        cjar = http.cookiejar.MozillaCookieJar()
+        cjar.load(cookies_path, ignore_discard=True, ignore_expires=True)
+    except (http.cookiejar.LoadError, UnicodeDecodeError):
+        raise CookieFileError("Cookie file is not formatted correctly.")
+
 
 def gen_csv_rows(entries, more_info=False):
     for entry in entries:
@@ -444,7 +445,7 @@ def cli():
 
     try:
         more_info, retries, csv_file, cookies = args.more_info, args.retries, args.csv_file, args.cookies
-        csv_path = None
+        csv_path = cookies_path = None
         sel_raw_opts = [key for key, value in vars(args).items() if key in RAW_OPTS and value]
         sorted(sel_raw_opts, key=lambda x: RAW_OPTS.index(x))
 
@@ -452,8 +453,12 @@ def cli():
             csv_path = Path(csv_file)
             write_to_csv(csv_path, gen_csv_rows([MOCK_ENTRY]))
             csv_path.unlink()
-        
-        playlist = Playlist(args.url, args.format_filter, retries=retries, cookies=cookies)
+
+        if cookies:
+            cookies_path = Path(cookies)
+            validate_cookiefile(cookies_path)
+
+        playlist = Playlist(args.url, args.format_filter, retries=retries, cookies_path=cookies_path)
         if sel_raw_opts:
             print_raw_data(playlist, sel_raw_opts)
         else:
@@ -467,12 +472,8 @@ def cli():
         err_msg = "Resource not found."
     except FormatSelectionError:
         err_msg = "Invalid format filter."
-    except CsvFileError as err:
+    except (CsvFileError, CookieFileError) as err:
         err_msg = str(err)
-    except CookieFileError:
-        err_msg = "Cookie file does not exist."
-    except CookieFormatError:
-        err_msg = "Cookie file is not formatted correctly."
     finally:
         if err_msg:
             parser.exit(status=1, message="Error: {}\n".format(err_msg))
