@@ -1,5 +1,5 @@
 # totalsize
-Script that uses youtube-dl to calculate total size of all videos in a playlist (also works with single videos).
+Script that uses yt-dlp to calculate total size of all videos in a playlist (also works with single videos).
 # Installation
 
 ```
@@ -14,7 +14,7 @@ totalsize [-h] [-f FORMAT_FILTER] [-m] [-r NUM] [-c FILE] [--media]
           [--percentage] [--cookies FILE]
           URL
 ```
-See https://github.com/ytdl-org/youtube-dl#format-selection for details on formats.
+See https://github.com/yt-dlp/yt-dlp#format-selection for details on formats.
 
 Specify the `-m` option for additional info on each video.
 

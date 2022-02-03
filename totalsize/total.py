@@ -9,11 +9,11 @@ import tempfile
 import time
 from pathlib import Path
 
-import youtube_dl
-from youtube_dl.utils import DownloadError, ExtractorError
+import yt_dlp
+from yt_dlp.utils import DownloadError, ExtractorError
 
-DEFAULT_FORMAT = "bestvideo+bestaudio/best"
-FORMAT_DOC_URL = "https://github.com/ytdl-org/youtube-dl#format-selection"
+DEFAULT_FORMAT = "bestvideo*+bestaudio/best"
+FORMAT_DOC_URL = "https://github.com/yt-dlp/yt-dlp#format-selection"
 FRAGMENTS_REGEX = re.compile(r"range/[\d]+-([\d]+)$")
 TEMPPATH = Path(tempfile.gettempdir(), "totalsize", "fragment")
 TIMEOUT = 30
@@ -153,7 +153,7 @@ class Playlist:
         if cookies_path:
             opts["cookiefile"] = str(cookies_path)
         self._retries = retries
-        self._ydl = youtube_dl.YoutubeDL(opts)
+        self._ydl = yt_dlp.YoutubeDL(opts)
         TEMPPATH.parent.mkdir(exist_ok=True)
 
         try:
