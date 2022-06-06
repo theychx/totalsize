@@ -1,13 +1,14 @@
 [build-system]
-requires = ["flit_core >=2,<3"]
+requires = ["flit_core >=3.2,<4"]
 build-backend = "flit_core.buildapi"
 
-[tool.flit.metadata]
-module = "totalsize"
-author = "theychx"
-author-email = "theychx@fastmail.com"
-home-page = "https://github.com/theychx/totalsize"
-requires = ["youtube-dl >=2019.11.22"]
+[project]
+name = "totalsize"
+authors = [{name = "theychx", email = "theychx@fastmail.com"}]
+readme = "README.md"
+license = {file = "LICENSE"}
+dynamic = ["version", "description"]
+dependencies = ["yt-dlp >=2022.5.18"]
 requires-python = ">=3.6"
 classifiers = [
     "License :: OSI Approved :: MIT License",
@@ -16,11 +17,15 @@ classifiers = [
     "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "Topic :: Multimedia",
     "Topic :: Multimedia :: Sound/Audio",
     "Topic :: Multimedia :: Video",
 ]
 
+[project.urls]
+Home = "https://github.com/theychx/totalsize"
 
-[tool.flit.scripts]
+[project.scripts]
 totalsize = "totalsize.total:cli"
