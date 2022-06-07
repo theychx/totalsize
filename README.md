@@ -20,4 +20,4 @@ Specify the `-m` option for additional info on each video.
 
 When specifying any of the raw data options, data will always be printed in this order:
 
-*media*, *size*, *duration*, *views*, *likes*
+*media*, *size*, *duration*, *views*, *likes*, *dislikes*, *percentage*
