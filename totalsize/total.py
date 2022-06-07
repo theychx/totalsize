@@ -33,11 +33,11 @@ DL_ERRS = ("unable to download webpage", "this video is unavailable", "fragment"
 NOT_AVAILABLE_VAL = -1
 CONTENT_FIELDS = ["Id", "Title", "Size"]
 CONTENT_MORE_FIELDS = ["Duration", "Views", "Likes", "Dislikes", "Percentage"]
+TOTALS_FIELDS = ["#", "Size"]
+INFO_FIELDS = ["Info", "#"]
 TITLE_FIELD_SIZE = 58
 SIZE_STRING = "{0:>7.1f} {1}"
 SIZE_STRING_NO_MULT = "{0:>7}"
-TOTALS = "Totals"
-INFO = "Info"
 TOTAL_SIZE_TXT = "Total size of media files"
 TOTAL_MEDIA_TXT = "Total number of media files"
 TOTAL_INACC_TXT = "Total number of media files with inaccurate reported size"
@@ -64,9 +64,9 @@ class CookieFileError(Exception):
 
 
 class Entry:
-    def __init__(self, title, mid, inaccurate, size, duration, views, likes, dislikes):
-        self.title = title
+    def __init__(self, mid, title, inaccurate, size, duration, views, likes, dislikes):
         self.mid = mid
+        self.title = title
         self.inaccurate = inaccurate
         self.size = size
         self.duration = duration
@@ -130,7 +130,7 @@ class Entry:
         return fstr.format(size, mname)
 
 
-MOCK_ENTRY = Entry("mock", None, False, None, None, None, None, None)
+FAKE_ENTRY = Entry(None, "fake", False, None, None, None, None, None)
 
 
 class Playlist:
@@ -160,20 +160,16 @@ class Playlist:
     @property
     def totals(self):
         if not self.entries:
-            return MOCK_ENTRY
-        likes = sum(e.likes for e in self.entries if e.likes)
-        dislikes = sum(e.dislikes for e in self.entries if e.dislikes)
-        likes = likes if likes or dislikes else None
-        dislikes = dislikes if likes or dislikes else None
+            return FAKE_ENTRY
         info = {
-            "title": "Totals",
             "mid": None,
+            "title": "Totals",
             "inaccurate": any(e.inaccurate for e in self.entries),
             "size": sum(e.size for e in self.entries if e.size) or None,
             "duration": sum(e.duration for e in self.entries if e.duration) or None,
             "views": sum(e.views for e in self.entries if e.views) or None,
-            "likes": likes,
-            "dislikes": dislikes,
+            "likes": sum(e.likes for e in self.entries if e.likes) or None,
+            "dislikes": sum(e.dislikes for e in self.entries if e.dislikes) or None
         }
         return Entry(**info)
 
@@ -221,8 +217,8 @@ class Playlist:
                 continue
 
             info = {
-                "title": media.get("title"),
                 "mid": media.get("id"),
+                "title": media.get("title"),
                 "inaccurate": inaccurate,
                 "size": size,
                 "duration": media_info.get("duration"),
@@ -318,8 +314,8 @@ def write_to_csv(csv_path, rows):
 
 
 def gen_row(entry, more_info=False):
-    row = [
-        entry.mid or "",
+    row = [entry.mid] if entry.mid else []
+    row += [
         entry.truncated_title or "",
         f"{'~' if entry.inaccurate else ' '}{entry.readable_size or 'no size'}",
     ]
@@ -344,9 +340,10 @@ def gen_empty_table(fields):
 
 def print_report(playlist, more_info=False):
     interupted = False
-    fields = CONTENT_FIELDS + CONTENT_MORE_FIELDS if more_info else CONTENT_FIELDS
-    content_table = gen_empty_table(fields)
-    totals_table = gen_empty_table(fields)
+    content_fields = CONTENT_FIELDS + CONTENT_MORE_FIELDS if more_info else CONTENT_FIELDS
+    content_table = gen_empty_table(content_fields)
+    total_fields = TOTALS_FIELDS + CONTENT_MORE_FIELDS if more_info else TOTALS_FIELDS
+    totals_table = gen_empty_table(total_fields)
 
     try:
         for entry in playlist.gen_info():
@@ -369,7 +366,7 @@ def print_report(playlist, more_info=False):
     number_of_media_inacc = playlist.number_of_media_inacc
     number_of_media_nosize = playlist.number_of_media_nosize
 
-    info_table = gen_empty_table([INFO, ""])
+    info_table = gen_empty_table(INFO_FIELDS)
     info_table.add_rows(
         [
             [TOTAL_MEDIA_TXT, number_of_media],
@@ -438,7 +435,7 @@ def cli():
 
         if csv_file:
             csv_path = Path(csv_file)
-            write_to_csv(csv_path, gen_csv_rows([MOCK_ENTRY]))
+            write_to_csv(csv_path, gen_csv_rows([FAKE_ENTRY]))
             csv_path.unlink()
 
         if cookies:
