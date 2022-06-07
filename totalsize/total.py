@@ -8,8 +8,10 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from click import style
 
 import yt_dlp
+from prettytable import PrettyTable, SINGLE_BORDER
 from yt_dlp.utils import DownloadError, ExtractorError, UnsupportedError
 
 DEFAULT_FORMAT = "bestvideo*+bestaudio/best"
@@ -29,26 +31,14 @@ MULT_NAMES_DEC = ("", "K", "M", "B")
 RAW_OPTS = ("media", "size", "duration", "views", "likes", "dislikes", "percentage")
 DL_ERRS = ("unable to download webpage", "this video is unavailable", "fragment")
 NOT_AVAILABLE_VAL = -1
-
-TXT_FIELD_SIZE = 58
-MSG_FIELD_SIZE = 12
-MORE_FIELD_SIZE = 55
-REPORT_STRING = "{txt:<58}{msg:>12}"
+CONTENT_FIELDS = ["Id", "Title", "Size"]
+CONTENT_MORE_FIELDS = ["Duration", "Views", "Likes", "Dislikes", "Percentage"]
+TITLE_FIELD_SIZE = 58
 SIZE_STRING = "{0:>7.1f} {1}"
 SIZE_STRING_NO_MULT = "{0:>7}"
-MORE_STRING = "{duration:>19}{views:>9}{likes:>9}{dislikes:>9}{likes_percentage:>9}"
-LEGACY = {"txt": "", "msg": "Size"}
-MORE_LEGACY = {
-    "duration": "Duration",
-    "views": "Views",
-    "likes": "Likes",
-    "dislikes": "Dislikes",
-    "likes_percentage": "L/D%",
-}
-PAD_CHAR = "-"
-PAD = PAD_CHAR * (TXT_FIELD_SIZE + MSG_FIELD_SIZE)
-MPAD = PAD_CHAR * (TXT_FIELD_SIZE + MSG_FIELD_SIZE + MORE_FIELD_SIZE)
 TOTALS = "Totals"
+INFO = "Info"
+TOTAL_SIZE_TXT = "Total size of media files"
 TOTAL_MEDIA_TXT = "Total number of media files"
 TOTAL_INACC_TXT = "Total number of media files with inaccurate reported size"
 TOTAL_NO_SIZE_TXT = "Total number of media files with no reported size"
@@ -74,8 +64,9 @@ class CookieFileError(Exception):
 
 
 class Entry:
-    def __init__(self, title, inaccurate, size, duration, views, likes, dislikes):
+    def __init__(self, title, mid, inaccurate, size, duration, views, likes, dislikes):
         self.title = title
+        self.mid = mid
         self.inaccurate = inaccurate
         self.size = size
         self.duration = duration
@@ -88,7 +79,7 @@ class Entry:
         title = self.title
         if title is None:
             return None
-        return title[: TXT_FIELD_SIZE - 3] + "..." if len(title) > TXT_FIELD_SIZE else title
+        return title[: TITLE_FIELD_SIZE - 3] + "..." if len(title) > TITLE_FIELD_SIZE else title
 
     @property
     def likes_percentage(self):
@@ -139,7 +130,7 @@ class Entry:
         return fstr.format(size, mname)
 
 
-MOCK_ENTRY = Entry("mock", False, None, None, None, None, None)
+MOCK_ENTRY = Entry("mock", None, False, None, None, None, None, None)
 
 
 class Playlist:
@@ -175,7 +166,8 @@ class Playlist:
         likes = likes if likes or dislikes else None
         dislikes = dislikes if likes or dislikes else None
         info = {
-            "title": None,
+            "title": "Totals",
+            "mid": None,
             "inaccurate": any(e.inaccurate for e in self.entries),
             "size": sum(e.size for e in self.entries if e.size) or None,
             "duration": sum(e.duration for e in self.entries if e.duration) or None,
@@ -230,6 +222,7 @@ class Playlist:
 
             info = {
                 "title": media.get("title"),
+                "mid": media.get("id"),
                 "inaccurate": inaccurate,
                 "size": size,
                 "duration": media_info.get("duration"),
@@ -324,71 +317,67 @@ def write_to_csv(csv_path, rows):
         raise CsvFileError("Invalid path.")
 
 
-def print_report_line(entry=None, txt="", msg="", more_info=False, err=False):
-    fstr = REPORT_STRING
-    if entry:
-        txt = txt or entry.truncated_title
-        if not msg and entry.size:
-            inaccurate = "~" if entry.inaccurate else ""
-            msg = inaccurate + entry.readable_size
-
-    report_line = {"txt": txt, "msg": msg}
+def gen_row(entry, more_info=False):
+    row = [
+        entry.mid or "",
+        entry.truncated_title or "",
+        f"{'~' if entry.inaccurate else ' '}{entry.readable_size or 'no size'}",
+    ]
     if more_info:
-        report_line.update(
-            {
-                "duration": entry.readable_duration or "",
-                "views": entry.readable_views or "",
-                "likes": entry.readable_likes or "",
-                "dislikes": entry.readable_dislikes or "",
-                "likes_percentage": entry.readable_likes_percentage or "",
-            }
-        )
-        fstr += MORE_STRING
-    print(fstr.format(**report_line), file=sys.stderr if err else sys.stdout)
+        row += [
+            entry.readable_duration or "",
+            entry.readable_views or "",
+            entry.readable_likes or "",
+            entry.readable_dislikes or "",
+            entry.readable_likes_percentage or "",
+        ]
+    return row
 
 
-def print_legacy_line(more_info=False):
-    fstr = REPORT_STRING
-    legacy_line = LEGACY
-    if more_info:
-        legacy_line.update(MORE_LEGACY)
-        fstr += MORE_STRING
-    print(fstr.format(**legacy_line))
+def gen_empty_table(fields):
+    table = PrettyTable()
+    table.align = "r"
+    table.set_style(SINGLE_BORDER)
+    table.field_names = fields
+    return table
 
 
 def print_report(playlist, more_info=False):
-    pad = MPAD if more_info else PAD
-
-    print_legacy_line(more_info=more_info)
-    print(pad)
+    interupted = False
+    fields = CONTENT_FIELDS + CONTENT_MORE_FIELDS if more_info else CONTENT_FIELDS
+    content_table = gen_empty_table(fields)
+    totals_table = gen_empty_table(fields)
 
     try:
         for entry in playlist.gen_info():
-            if entry.size is None:
-                print_report_line(entry=entry, msg="no size", more_info=more_info, err=True)
-            else:
-                print_report_line(entry=entry, more_info=more_info)
+            content_table.add_row(gen_row(entry, more_info=more_info))
     except KeyboardInterrupt:
-        print_report_line(txt=ABORT_INCOMPLETE_TXT, err=True)
+        interupted = True
+
+    print(content_table)
+    if interupted:
+        print(ABORT_INCOMPLETE_TXT)
 
     number_of_media = playlist.number_of_media
-    # do not display 'total' row for one video
-    if number_of_media > 1:
-        print(pad)
-        print_legacy_line(more_info=more_info)
-        print(pad)
-        print_report_line(txt=TOTALS, entry=playlist.totals, more_info=more_info)
+    # do not display 'totals' table for one video
+    if number_of_media < 2:
+        return
 
-    print(pad)
-    print_report_line(txt=TOTAL_MEDIA_TXT, msg=number_of_media, err=not number_of_media)
+    totals_table.add_row(gen_row(playlist.totals, more_info=more_info))
+    print(totals_table)
 
     number_of_media_inacc = playlist.number_of_media_inacc
-    if number_of_media_inacc:
-        print_report_line(txt=TOTAL_INACC_TXT, msg=number_of_media_inacc)
-
     number_of_media_nosize = playlist.number_of_media_nosize
-    if number_of_media_nosize:
-        print_report_line(txt=TOTAL_NO_SIZE_TXT, msg=number_of_media_nosize, err=True)
+
+    info_table = gen_empty_table([INFO, ""])
+    info_table.add_rows(
+        [
+            [TOTAL_MEDIA_TXT, number_of_media],
+            [TOTAL_INACC_TXT, number_of_media_inacc],
+            [TOTAL_NO_SIZE_TXT, number_of_media_nosize],
+        ]
+    )
+    print(info_table)
 
 
 def print_raw_data(playlist, raw_opts):
