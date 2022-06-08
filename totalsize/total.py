@@ -4,12 +4,12 @@ import datetime
 import http.cookiejar
 import math
 import re
-import sys
 import tempfile
 import time
 from pathlib import Path
 
 import yt_dlp
+from prettytable import PrettyTable, SINGLE_BORDER
 from yt_dlp.utils import DownloadError, ExtractorError, UnsupportedError
 
 DEFAULT_FORMAT = "bestvideo*+bestaudio/best"
@@ -28,27 +28,16 @@ MULT_NAMES_BTS = ("B", "KB", "MB", "GB", "TB", "PB")
 MULT_NAMES_DEC = ("", "K", "M", "B")
 RAW_OPTS = ("media", "size", "duration", "views", "likes", "dislikes", "percentage")
 DL_ERRS = ("unable to download webpage", "this video is unavailable", "fragment")
+UNSUPPORTED_URL_ERR = "unsupported url"
 NOT_AVAILABLE_VAL = -1
-
-TXT_FIELD_SIZE = 58
-MSG_FIELD_SIZE = 12
-MORE_FIELD_SIZE = 55
-REPORT_STRING = "{txt:<58}{msg:>12}"
+CONTENT_FIELDS = ["Id", "Title", "Size"]
+CONTENT_MORE_FIELDS = ["Duration", "Views", "Likes", "Dislikes", "Percentage"]
+TOTALS_FIELDS = [" ", "Size"]
+INFO_FIELDS = ["Info", " "]
+TITLE_FIELD_SIZE = 58
 SIZE_STRING = "{0:>7.1f} {1}"
 SIZE_STRING_NO_MULT = "{0:>7}"
-MORE_STRING = "{duration:>19}{views:>9}{likes:>9}{dislikes:>9}{likes_percentage:>9}"
-LEGACY = {"txt": "", "msg": "Size"}
-MORE_LEGACY = {
-    "duration": "Duration",
-    "views": "Views",
-    "likes": "Likes",
-    "dislikes": "Dislikes",
-    "likes_percentage": "L/D%",
-}
-PAD_CHAR = "-"
-PAD = PAD_CHAR * (TXT_FIELD_SIZE + MSG_FIELD_SIZE)
-MPAD = PAD_CHAR * (TXT_FIELD_SIZE + MSG_FIELD_SIZE + MORE_FIELD_SIZE)
-TOTALS = "Totals"
+TOTAL_SIZE_TXT = "Total size of media files"
 TOTAL_MEDIA_TXT = "Total number of media files"
 TOTAL_INACC_TXT = "Total number of media files with inaccurate reported size"
 TOTAL_NO_SIZE_TXT = "Total number of media files with no reported size"
@@ -57,24 +46,13 @@ ABORT_INCOMPLETE_TXT = ABORT_TXT + " Results will be incomplete!"
 SUPPRESS_TXT = "Suppress normal output, and print raw {}."
 
 
-class ResourceNotFoundError(Exception):
-    pass
-
-
-class FormatSelectionError(Exception):
-    pass
-
-
-class CsvFileError(Exception):
-    pass
-
-
-class CookieFileError(Exception):
+class TotalsizeError(Exception):
     pass
 
 
 class Entry:
-    def __init__(self, title, inaccurate, size, duration, views, likes, dislikes):
+    def __init__(self, mid, title, inaccurate, size, duration, views, likes, dislikes):
+        self.mid = mid
         self.title = title
         self.inaccurate = inaccurate
         self.size = size
@@ -88,14 +66,12 @@ class Entry:
         title = self.title
         if title is None:
             return None
-        return title[: TXT_FIELD_SIZE - 3] + "..." if len(title) > TXT_FIELD_SIZE else title
+        return title[: TITLE_FIELD_SIZE - 3] + "..." if len(title) > TITLE_FIELD_SIZE else title
 
     @property
     def likes_percentage(self):
-        if self.likes is None or self.dislikes is None or self.likes == self.dislikes == 0:
+        if self.likes is None or self.dislikes is None:
             return None
-        if self.likes == 0:
-            return 0
         return (self.likes / (self.likes + self.dislikes)) * 100
 
     @property
@@ -139,7 +115,7 @@ class Entry:
         return fstr.format(size, mname)
 
 
-MOCK_ENTRY = Entry("mock", False, None, None, None, None, None)
+FAKE_ENTRY = Entry(None, "fake", False, None, None, None, None, None)
 
 
 class Playlist:
@@ -154,14 +130,14 @@ class Playlist:
         try:
             self._selector = self._ydl.build_format_selector(format_sel)
         except ValueError:
-            raise FormatSelectionError
+            raise TotalsizeError("Invalid format filter")
 
         try:
             preinfo = self._ydl.extract_info(url, process=False)
             if preinfo.get("ie_key"):
                 preinfo = self._ydl.extract_info(preinfo["url"], process=False)
         except (DownloadError, UnsupportedError):
-            raise ResourceNotFoundError
+            raise TotalsizeError("Resource not found")
 
         self._medias = preinfo.get("entries") or [preinfo]
         self.entries = []
@@ -169,19 +145,16 @@ class Playlist:
     @property
     def totals(self):
         if not self.entries:
-            return MOCK_ENTRY
-        likes = sum(e.likes for e in self.entries if e.likes)
-        dislikes = sum(e.dislikes for e in self.entries if e.dislikes)
-        likes = likes if likes or dislikes else None
-        dislikes = dislikes if likes or dislikes else None
+            return FAKE_ENTRY
         info = {
-            "title": None,
+            "mid": None,
+            "title": "Totals",
             "inaccurate": any(e.inaccurate for e in self.entries),
             "size": sum(e.size for e in self.entries if e.size) or None,
             "duration": sum(e.duration for e in self.entries if e.duration) or None,
             "views": sum(e.views for e in self.entries if e.views) or None,
-            "likes": likes,
-            "dislikes": dislikes,
+            "likes": sum(e.likes for e in self.entries if e.likes) or None,
+            "dislikes": sum(e.dislikes for e in self.entries if e.dislikes) or None,
         }
         return Entry(**info)
 
@@ -222,6 +195,9 @@ class Playlist:
                     if any(e in serr for e in DL_ERRS):
                         attempt_retries += 1
                         continue
+                    elif UNSUPPORTED_URL_ERR in serr:
+                        unsupported = True
+                        break
                 else:
                     break
 
@@ -229,6 +205,7 @@ class Playlist:
                 continue
 
             info = {
+                "mid": media.get("id"),
                 "title": media.get("title"),
                 "inaccurate": inaccurate,
                 "size": size,
@@ -237,9 +214,8 @@ class Playlist:
                 "likes": media_info.get("like_count"),
                 "dislikes": media_info.get("dislike_count"),
             }
-            entry = Entry(**info)
-            self.entries.append(entry)
-            yield entry
+            self.entries.append(Entry(**info))
+            yield 1
 
     def _get_media_info(self, media):
         return self._ydl.process_ie_result(media, download=False)
@@ -248,7 +224,7 @@ class Playlist:
         try:
             best = next(self._selector(media_info))
         except StopIteration:
-            raise FormatSelectionError
+            raise TotalsizeError("Invalid format filter")
         except KeyError:
             best = media_info
 
@@ -295,12 +271,12 @@ class Playlist:
 
 def validate_cookiefile(cookies_path):
     if not cookies_path.is_file():
-        raise CookieFileError("Cookie file does not exist.")
+        raise TotalsizeError("Cookie file does not exist")
     try:
         cjar = http.cookiejar.MozillaCookieJar()
         cjar.load(cookies_path, ignore_discard=True, ignore_expires=True)
     except (http.cookiejar.LoadError, UnicodeDecodeError):
-        raise CookieFileError("Cookie file is not formatted correctly.")
+        raise TotalsizeError("Cookie file is not formatted correctly")
 
 
 def gen_csv_rows(entries, more_info=False):
@@ -317,78 +293,79 @@ def write_to_csv(csv_path, rows):
             csv_writer = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL)
             csv_writer.writerows(rows)
     except PermissionError:
-        raise CsvFileError("Insufficient file permissions.")
+        raise TotalsizeError("Insufficient file permissions")
     except FileExistsError:
-        raise CsvFileError("File already exists.")
+        raise TotalsizeError("File already exists")
     except FileNotFoundError:
-        raise CsvFileError("Invalid path.")
+        raise TotalsizeError("Invalid path")
 
 
-def print_report_line(entry=None, txt="", msg="", more_info=False, err=False):
-    fstr = REPORT_STRING
-    if entry:
-        txt = txt or entry.truncated_title
-        if not msg and entry.size:
-            inaccurate = "~" if entry.inaccurate else ""
-            msg = inaccurate + entry.readable_size
-
-    report_line = {"txt": txt, "msg": msg}
+def gen_row(entry, more_info=False):
+    row = [entry.mid] if entry.mid else []
+    row += [
+        entry.truncated_title or "",
+        f"{'~' if entry.inaccurate else ' '}{entry.readable_size or 'no size'}",
+    ]
     if more_info:
-        report_line.update(
-            {
-                "duration": entry.readable_duration or "",
-                "views": entry.readable_views or "",
-                "likes": entry.readable_likes or "",
-                "dislikes": entry.readable_dislikes or "",
-                "likes_percentage": entry.readable_likes_percentage or "",
-            }
-        )
-        fstr += MORE_STRING
-    print(fstr.format(**report_line), file=sys.stderr if err else sys.stdout)
+        row += [
+            entry.readable_duration or "",
+            entry.readable_views or "",
+            entry.readable_likes or "",
+            entry.readable_dislikes or "",
+            entry.readable_likes_percentage or "",
+        ]
+    return row
 
 
-def print_legacy_line(more_info=False):
-    fstr = REPORT_STRING
-    legacy_line = LEGACY
-    if more_info:
-        legacy_line.update(MORE_LEGACY)
-        fstr += MORE_STRING
-    print(fstr.format(**legacy_line))
+def gen_empty_table(fields):
+    table = PrettyTable()
+    table.align = "r"
+    table.set_style(SINGLE_BORDER)
+    table.field_names = fields
+    return table
 
 
-def print_report(playlist, more_info=False):
-    pad = MPAD if more_info else PAD
-
-    print_legacy_line(more_info=more_info)
-    print(pad)
+def print_report(playlist, more_info=False, no_progress=False):
+    interupted = False
+    processed_media = 0
+    content_fields = CONTENT_FIELDS + CONTENT_MORE_FIELDS if more_info else CONTENT_FIELDS
+    content_table = gen_empty_table(content_fields)
+    total_fields = TOTALS_FIELDS + CONTENT_MORE_FIELDS if more_info else TOTALS_FIELDS
+    totals_table = gen_empty_table(total_fields)
 
     try:
-        for entry in playlist.gen_info():
-            if entry.size is None:
-                print_report_line(entry=entry, msg="no size", more_info=more_info, err=True)
-            else:
-                print_report_line(entry=entry, more_info=more_info)
+        for processed in playlist.gen_info():
+            processed_media += processed
+            if not no_progress:
+                print(f"Processed {processed_media} mediafile{'s' if processed_media != 1 else ''}", end="\r")
     except KeyboardInterrupt:
-        print_report_line(txt=ABORT_INCOMPLETE_TXT, err=True)
+        interupted = True
 
-    number_of_media = playlist.number_of_media
-    # do not display 'total' row for one video
-    if number_of_media > 1:
-        print(pad)
-        print_legacy_line(more_info=more_info)
-        print(pad)
-        print_report_line(txt=TOTALS, entry=playlist.totals, more_info=more_info)
+    if playlist.number_of_media == 0:
+        return
 
-    print(pad)
-    print_report_line(txt=TOTAL_MEDIA_TXT, msg=number_of_media, err=not number_of_media)
+    content_table.add_rows([gen_row(e, more_info=more_info) for e in playlist.entries])
 
-    number_of_media_inacc = playlist.number_of_media_inacc
-    if number_of_media_inacc:
-        print_report_line(txt=TOTAL_INACC_TXT, msg=number_of_media_inacc)
+    print(content_table)
+    if interupted:
+        print(ABORT_INCOMPLETE_TXT)
 
-    number_of_media_nosize = playlist.number_of_media_nosize
-    if number_of_media_nosize:
-        print_report_line(txt=TOTAL_NO_SIZE_TXT, msg=number_of_media_nosize, err=True)
+    # Do not display 'totals' and 'info' tables for one video
+    if playlist.number_of_media == 1:
+        return
+
+    totals_table.add_row(gen_row(playlist.totals, more_info=more_info))
+    print(totals_table)
+
+    info_table = gen_empty_table(INFO_FIELDS)
+    info_table.add_rows(
+        [
+            [TOTAL_MEDIA_TXT, playlist.number_of_media],
+            [TOTAL_INACC_TXT, playlist.number_of_media_inacc],
+            [TOTAL_NO_SIZE_TXT, playlist.number_of_media_nosize],
+        ]
+    )
+    print(info_table)
 
 
 def print_raw_data(playlist, raw_opts):
@@ -421,6 +398,9 @@ def cli():
         "-m", "--more-info", action="store_true", help="Display more info on each media file (if available)."
     )
     parser.add_argument(
+        "-n", "--no-progress", action="store_true", help="Do not display progress count during processing."
+    )
+    parser.add_argument(
         "-r",
         "--retries",
         metavar="NUM",
@@ -442,39 +422,34 @@ def cli():
     err_msg = None
 
     try:
-        more_info, retries, csv_file, cookies = args.more_info, args.retries, args.csv_file, args.cookies
         csv_path = cookies_path = None
         sel_raw_opts = [key for key, value in vars(args).items() if key in RAW_OPTS and value]
         sorted(sel_raw_opts, key=lambda x: RAW_OPTS.index(x))
 
-        if csv_file:
-            csv_path = Path(csv_file)
-            write_to_csv(csv_path, gen_csv_rows([MOCK_ENTRY]))
+        if args.csv_file:
+            csv_path = Path(args.csv_file)
+            write_to_csv(csv_path, gen_csv_rows([FAKE_ENTRY]))
             csv_path.unlink()
 
-        if cookies:
-            cookies_path = Path(cookies)
+        if args.cookies:
+            cookies_path = Path(args.cookies)
             validate_cookiefile(cookies_path)
 
-        playlist = Playlist(args.url, args.format_filter, retries=retries, cookies_path=cookies_path)
+        playlist = Playlist(args.url, args.format_filter, retries=args.retries, cookies_path=cookies_path)
         if sel_raw_opts:
             print_raw_data(playlist, sel_raw_opts)
         else:
-            print_report(playlist, more_info=more_info)
+            print_report(playlist, more_info=args.more_info, no_progress=args.no_progress)
 
         if csv_path:
-            write_to_csv(csv_path, gen_csv_rows(playlist.entries, more_info=more_info))
+            write_to_csv(csv_path, gen_csv_rows(playlist.entries, more_info=args.more_info))
     except KeyboardInterrupt:
         err_msg = ABORT_TXT
-    except ResourceNotFoundError:
-        err_msg = "Resource not found."
-    except FormatSelectionError:
-        err_msg = "Invalid format filter."
-    except (CsvFileError, CookieFileError) as err:
+    except TotalsizeError as err:
         err_msg = str(err)
-    finally:
-        if err_msg:
-            parser.exit(status=1, message="Error: {}\n".format(err_msg))
+
+    if err_msg:
+        parser.exit(status=1, message=f"Error: {err_msg}.\n")
 
 
 if __name__ == "__main__":

@@ -39,6 +39,11 @@ class TestTotal(unittest.TestCase):
         self.assertEqual(playlist.number_of_media_inacc, 0)
         self.assertEqual(playlist.number_of_media_nosize, 11)
 
+    def test_get_totalsize_invalid_url(self):
+        playlist = Playlist("https://www.google.com", "best")
+        self.assertIsNone(playlist.totals.size)
+        self.assertEqual(playlist.number_of_media, 0)
+
 
 if __name__ == "__main__":
     sys.exit(unittest.main())

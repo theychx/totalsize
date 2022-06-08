@@ -8,11 +8,11 @@ authors = [{name = "theychx", email = "theychx@fastmail.com"}]
 readme = "README.md"
 license = {file = "LICENSE"}
 dynamic = ["version", "description"]
-dependencies = ["yt-dlp >=2022.5.18"]
+dependencies = ["yt-dlp >=2022.5.18", "prettytable >=3.3.0"]
 requires-python = ">=3.6"
 classifiers = [
     "License :: OSI Approved :: MIT License",
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
