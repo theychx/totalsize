@@ -214,8 +214,7 @@ class Playlist:
                 "likes": media_info.get("like_count"),
                 "dislikes": media_info.get("dislike_count"),
             }
-            entry = Entry(**info)
-            self.entries.append(entry)
+            self.entries.append(Entry(**info))
             yield 1
 
     def _get_media_info(self, media):
@@ -338,7 +337,7 @@ def print_report(playlist, more_info=False, no_progress=False):
         for processed in playlist.gen_info():
             processed_media += processed
             if not no_progress:
-                print(f"Processed {processed_media} medias", end="\r")
+                print(f"Processed {processed_media} mediafile{'s' if processed_media != 1 else ''}", end="\r")
     except KeyboardInterrupt:
         interupted = True
 
