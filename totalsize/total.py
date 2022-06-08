@@ -4,11 +4,9 @@ import datetime
 import http.cookiejar
 import math
 import re
-import sys
 import tempfile
 import time
 from pathlib import Path
-from click import style
 
 import yt_dlp
 from prettytable import PrettyTable, SINGLE_BORDER
@@ -33,8 +31,8 @@ DL_ERRS = ("unable to download webpage", "this video is unavailable", "fragment"
 NOT_AVAILABLE_VAL = -1
 CONTENT_FIELDS = ["Id", "Title", "Size"]
 CONTENT_MORE_FIELDS = ["Duration", "Views", "Likes", "Dislikes", "Percentage"]
-TOTALS_FIELDS = ["#", "Size"]
-INFO_FIELDS = ["Info", "#"]
+TOTALS_FIELDS = [" ", "Size"]
+INFO_FIELDS = ["Info", " "]
 TITLE_FIELD_SIZE = 58
 SIZE_STRING = "{0:>7.1f} {1}"
 SIZE_STRING_NO_MULT = "{0:>7}"
@@ -47,19 +45,7 @@ ABORT_INCOMPLETE_TXT = ABORT_TXT + " Results will be incomplete!"
 SUPPRESS_TXT = "Suppress normal output, and print raw {}."
 
 
-class ResourceNotFoundError(Exception):
-    pass
-
-
-class FormatSelectionError(Exception):
-    pass
-
-
-class CsvFileError(Exception):
-    pass
-
-
-class CookieFileError(Exception):
+class TotalsizeError(Exception):
     pass
 
 
@@ -83,10 +69,8 @@ class Entry:
 
     @property
     def likes_percentage(self):
-        if self.likes is None or self.dislikes is None or self.likes == self.dislikes == 0:
+        if self.likes is None or self.dislikes is None:
             return None
-        if self.likes == 0:
-            return 0
         return (self.likes / (self.likes + self.dislikes)) * 100
 
     @property
@@ -145,14 +129,14 @@ class Playlist:
         try:
             self._selector = self._ydl.build_format_selector(format_sel)
         except ValueError:
-            raise FormatSelectionError
+            raise TotalsizeError("Invalid format filter")
 
         try:
             preinfo = self._ydl.extract_info(url, process=False)
             if preinfo.get("ie_key"):
                 preinfo = self._ydl.extract_info(preinfo["url"], process=False)
         except (DownloadError, UnsupportedError):
-            raise ResourceNotFoundError
+            raise TotalsizeError("Resource not found")
 
         self._medias = preinfo.get("entries") or [preinfo]
         self.entries = []
@@ -169,7 +153,7 @@ class Playlist:
             "duration": sum(e.duration for e in self.entries if e.duration) or None,
             "views": sum(e.views for e in self.entries if e.views) or None,
             "likes": sum(e.likes for e in self.entries if e.likes) or None,
-            "dislikes": sum(e.dislikes for e in self.entries if e.dislikes) or None
+            "dislikes": sum(e.dislikes for e in self.entries if e.dislikes) or None,
         }
         return Entry(**info)
 
@@ -228,7 +212,7 @@ class Playlist:
             }
             entry = Entry(**info)
             self.entries.append(entry)
-            yield entry
+            yield 1
 
     def _get_media_info(self, media):
         return self._ydl.process_ie_result(media, download=False)
@@ -237,7 +221,7 @@ class Playlist:
         try:
             best = next(self._selector(media_info))
         except StopIteration:
-            raise FormatSelectionError
+            raise TotalsizeError("Invalid format filter")
         except KeyError:
             best = media_info
 
@@ -284,12 +268,12 @@ class Playlist:
 
 def validate_cookiefile(cookies_path):
     if not cookies_path.is_file():
-        raise CookieFileError("Cookie file does not exist.")
+        raise TotalsizeError("Cookie file does not exist")
     try:
         cjar = http.cookiejar.MozillaCookieJar()
         cjar.load(cookies_path, ignore_discard=True, ignore_expires=True)
     except (http.cookiejar.LoadError, UnicodeDecodeError):
-        raise CookieFileError("Cookie file is not formatted correctly.")
+        raise TotalsizeError("Cookie file is not formatted correctly")
 
 
 def gen_csv_rows(entries, more_info=False):
@@ -306,11 +290,11 @@ def write_to_csv(csv_path, rows):
             csv_writer = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL)
             csv_writer.writerows(rows)
     except PermissionError:
-        raise CsvFileError("Insufficient file permissions.")
+        raise TotalsizeError("Insufficient file permissions")
     except FileExistsError:
-        raise CsvFileError("File already exists.")
+        raise TotalsizeError("File already exists")
     except FileNotFoundError:
-        raise CsvFileError("Invalid path.")
+        raise TotalsizeError("Invalid path")
 
 
 def gen_row(entry, more_info=False):
@@ -338,40 +322,41 @@ def gen_empty_table(fields):
     return table
 
 
-def print_report(playlist, more_info=False):
+def print_report(playlist, more_info=False, no_progress=False):
     interupted = False
+    processed_media = 0
     content_fields = CONTENT_FIELDS + CONTENT_MORE_FIELDS if more_info else CONTENT_FIELDS
     content_table = gen_empty_table(content_fields)
     total_fields = TOTALS_FIELDS + CONTENT_MORE_FIELDS if more_info else TOTALS_FIELDS
     totals_table = gen_empty_table(total_fields)
 
     try:
-        for entry in playlist.gen_info():
-            content_table.add_row(gen_row(entry, more_info=more_info))
+        for processed in playlist.gen_info():
+            processed_media += processed
+            if not no_progress:
+                print(f"Processed {processed_media} medias", end="\r")
     except KeyboardInterrupt:
         interupted = True
+
+    content_table.add_rows([gen_row(e, more_info=more_info) for e in playlist.entries])
 
     print(content_table)
     if interupted:
         print(ABORT_INCOMPLETE_TXT)
 
-    number_of_media = playlist.number_of_media
-    # do not display 'totals' table for one video
-    if number_of_media < 2:
+    # Do not display 'totals' and 'info' tables for one video
+    if playlist.number_of_media == 1:
         return
 
     totals_table.add_row(gen_row(playlist.totals, more_info=more_info))
     print(totals_table)
 
-    number_of_media_inacc = playlist.number_of_media_inacc
-    number_of_media_nosize = playlist.number_of_media_nosize
-
     info_table = gen_empty_table(INFO_FIELDS)
     info_table.add_rows(
         [
-            [TOTAL_MEDIA_TXT, number_of_media],
-            [TOTAL_INACC_TXT, number_of_media_inacc],
-            [TOTAL_NO_SIZE_TXT, number_of_media_nosize],
+            [TOTAL_MEDIA_TXT, playlist.number_of_media],
+            [TOTAL_INACC_TXT, playlist.number_of_media_inacc],
+            [TOTAL_NO_SIZE_TXT, playlist.number_of_media_nosize],
         ]
     )
     print(info_table)
@@ -407,6 +392,9 @@ def cli():
         "-m", "--more-info", action="store_true", help="Display more info on each media file (if available)."
     )
     parser.add_argument(
+        "-n", "--no-progress", action="store_true", help="Do not display progress count during processing."
+    )
+    parser.add_argument(
         "-r",
         "--retries",
         metavar="NUM",
@@ -428,39 +416,34 @@ def cli():
     err_msg = None
 
     try:
-        more_info, retries, csv_file, cookies = args.more_info, args.retries, args.csv_file, args.cookies
         csv_path = cookies_path = None
         sel_raw_opts = [key for key, value in vars(args).items() if key in RAW_OPTS and value]
         sorted(sel_raw_opts, key=lambda x: RAW_OPTS.index(x))
 
-        if csv_file:
-            csv_path = Path(csv_file)
+        if args.csv_file:
+            csv_path = Path(args.csv_file)
             write_to_csv(csv_path, gen_csv_rows([FAKE_ENTRY]))
             csv_path.unlink()
 
-        if cookies:
-            cookies_path = Path(cookies)
+        if args.cookies:
+            cookies_path = Path(args.cookies)
             validate_cookiefile(cookies_path)
 
-        playlist = Playlist(args.url, args.format_filter, retries=retries, cookies_path=cookies_path)
+        playlist = Playlist(args.url, args.format_filter, retries=args.retries, cookies_path=cookies_path)
         if sel_raw_opts:
             print_raw_data(playlist, sel_raw_opts)
         else:
-            print_report(playlist, more_info=more_info)
+            print_report(playlist, more_info=args.more_info, no_progress=args.no_progress)
 
         if csv_path:
-            write_to_csv(csv_path, gen_csv_rows(playlist.entries, more_info=more_info))
+            write_to_csv(csv_path, gen_csv_rows(playlist.entries, more_info=args.more_info))
     except KeyboardInterrupt:
         err_msg = ABORT_TXT
-    except ResourceNotFoundError:
-        err_msg = "Resource not found."
-    except FormatSelectionError:
-        err_msg = "Invalid format filter."
-    except (CsvFileError, CookieFileError) as err:
+    except TotalsizeError as err:
         err_msg = str(err)
-    finally:
-        if err_msg:
-            parser.exit(status=1, message="Error: {}\n".format(err_msg))
+
+    if err_msg:
+        parser.exit(status=1, message=f"Error: {err_msg}.\n")
 
 
 if __name__ == "__main__":
