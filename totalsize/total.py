@@ -28,6 +28,7 @@ MULT_NAMES_BTS = ("B", "KB", "MB", "GB", "TB", "PB")
 MULT_NAMES_DEC = ("", "K", "M", "B")
 RAW_OPTS = ("media", "size", "duration", "views", "likes", "dislikes", "percentage")
 DL_ERRS = ("unable to download webpage", "this video is unavailable", "fragment")
+UNSUPPORTED_URL_ERR = "unsupported url"
 NOT_AVAILABLE_VAL = -1
 CONTENT_FIELDS = ["Id", "Title", "Size"]
 CONTENT_MORE_FIELDS = ["Duration", "Views", "Likes", "Dislikes", "Percentage"]
@@ -194,6 +195,9 @@ class Playlist:
                     if any(e in serr for e in DL_ERRS):
                         attempt_retries += 1
                         continue
+                    elif UNSUPPORTED_URL_ERR in serr:
+                        unsupported = True
+                        break
                 else:
                     break
 
@@ -337,6 +341,9 @@ def print_report(playlist, more_info=False, no_progress=False):
                 print(f"Processed {processed_media} medias", end="\r")
     except KeyboardInterrupt:
         interupted = True
+
+    if playlist.number_of_media == 0:
+        return
 
     content_table.add_rows([gen_row(e, more_info=more_info) for e in playlist.entries])
 
