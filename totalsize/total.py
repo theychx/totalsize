@@ -28,7 +28,7 @@ MULT_NAMES_BTS = ("B", "KB", "MB", "GB", "TB", "PB")
 MULT_NAMES_DEC = ("", "K", "M", "B")
 RAW_OPTS = ("media", "size", "duration", "views", "likes", "dislikes", "percentage")
 DL_ERRS = ("unable to download webpage", "this video is unavailable", "video unavailable.", "fragment")
-UNSUPPORTED_URL_ERR = "unsupported url"
+UNSUPPORTED_URL_ERRS = ("unsupported url", "live event will begin")
 NOT_AVAILABLE_VAL = -1
 CONTENT_FIELDS = ["Id", "Title", "Size"]
 CONTENT_MORE_FIELDS = ["Duration", "Views", "Likes", "Dislikes", "Percentage"]
@@ -195,7 +195,7 @@ class Playlist:
                     if any(e in serr for e in DL_ERRS):
                         attempt_retries += 1
                         continue
-                    elif UNSUPPORTED_URL_ERR in serr:
+                    elif any(e in serr for e in UNSUPPORTED_URL_ERRS):
                         unsupported = True
                         break
                 else:
